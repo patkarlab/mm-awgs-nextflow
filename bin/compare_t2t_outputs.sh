@@ -69,23 +69,31 @@ REGIONS_ORDER=(IGH IGK IGL CCND1 NSD2 MAF MAFB MYC)
 # -----------------------------------------------------------------------------
 
 # Resolve the Severus VCF inside a given root. Severus' output filename
-# varies across versions and somatic/all modes; we try the same set of
-# candidate paths as the production bash and the Nextflow module.
+# varies across versions and somatic/all modes; the Nextflow port also
+# publishes under a `severus_out` subdir instead of the per-sample dir
+# the production bash uses. Try both layouts.
 resolve_severus_vcf() {
     local root="$1"
     local sample="$2"
-    local sev_dir="${root}/t2t/calls/severus/${sample}"
-    for cand in \
-        "${sev_dir}/${sample}.severus.vcf"           \
-        "${sev_dir}/severus_somatic.vcf"             \
-        "${sev_dir}/severus_all.vcf"                 \
-        "${sev_dir}/somatic_SVs/severus_somatic.vcf" \
-        "${sev_dir}/all_SVs/severus_all.vcf"
-    do
-        if [ -s "$cand" ]; then
-            echo "$cand"
-            return 0
-        fi
+    # Layout A: bash production       -> <root>/t2t/calls/severus/<sample>/...
+    # Layout B: Nextflow port (v0.1)  -> <root>/t2t/calls/severus/severus_out/...
+    local bases=(
+        "${root}/t2t/calls/severus/${sample}"
+        "${root}/t2t/calls/severus/severus_out"
+    )
+    for base in "${bases[@]}"; do
+        for cand in \
+            "${base}/${sample}.severus.vcf"           \
+            "${base}/severus_somatic.vcf"             \
+            "${base}/severus_all.vcf"                 \
+            "${base}/somatic_SVs/severus_somatic.vcf" \
+            "${base}/all_SVs/severus_all.vcf"
+        do
+            if [ -s "$cand" ]; then
+                echo "$cand"
+                return 0
+            fi
+        done
     done
     return 1
 }
