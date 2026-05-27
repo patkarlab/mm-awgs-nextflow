@@ -1,0 +1,63 @@
+# Nextflow
+work/
+.nextflow*
+*.html
+nextflow_logs/
+results/
+output/
+out/
+
+# Patient-data adjacencies — never commit
+*.bam
+*.bam.bai
+*.cram
+*.fastq
+*.fastq.gz
+*.fq.gz
+*.pod5
+*.fast5
+*.sam
+*.vcf
+*.vcf.gz
+*.vcf.gz.tbi
+*.bed.gz
+*.bed.gz.tbi
+patient_*.csv
+fish_*.txt
+fish_*.pdf
+*_clinical_*.csv
+*_phi_*.*
+
+# But DO commit the panel BEDs in assets/
+!assets/aWGS_MMfocused_v6_t2t_chr.bed
+!assets/aWGS_MMfocused_v6_t2t_NC.bed
+!assets/aWGS_MMfocused_v5_hg38.bed
+!assets/aWGS_MMfocused_v5_hg38.fragmented.bed
+
+# References (download externally)
+*.fa
+*.fa.gz
+*.fasta
+*.fasta.gz
+*.fai
+*.gff
+*.gff.gz
+*.gtf
+*.gtf.gz
+*.mmi
+
+# Editor and OS junk
+.DS_Store
+.vscode/
+.idea/
+*.swp
+*~
+__pycache__/
+*.pyc
+.pytest_cache/
+.mypy_cache/
+
+# Conda / containers
+.conda/
+.singularity/
+*.sif

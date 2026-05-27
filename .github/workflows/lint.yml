@@ -1,0 +1,29 @@
+name: lint
+
+on:
+  push:
+    branches: [main, dev]
+  pull_request:
+    branches: [main, dev]
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install nf-core and Nextflow
+        run: |
+          pip install nf-core
+          curl -fsSL https://get.nextflow.io | bash
+          sudo mv nextflow /usr/local/bin/
+
+      - name: nf-core lint
+        run: nf-core lint || true   # informational only until v0.2
+
+      - name: Parse workflow (stub profile)
+        run: nextflow inspect main.nf -profile stub || true

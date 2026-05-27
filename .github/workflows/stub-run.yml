@@ -1,0 +1,23 @@
+name: stub-run
+
+on:
+  push:
+    branches: [main, dev]
+  pull_request:
+    branches: [main, dev]
+
+jobs:
+  stub-run:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Nextflow
+        run: |
+          curl -fsSL https://get.nextflow.io | bash
+          sudo mv nextflow /usr/local/bin/
+
+      - name: Run the stub workflow
+        run: nextflow run main.nf -profile stub -stub-run
+        env:
+          NXF_ANSI_LOG: false

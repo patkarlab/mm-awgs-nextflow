@@ -1,0 +1,4 @@
+sample_id,minknow_bam,timepoint,notes
+SAMPLE_01,/goast/nikhil_awgs_testing/20260522_ADAPTIVE_SAMPLING_BAMS_complete/SAMPLE_01.bam,full,
+SAMPLE_02,/goast/nikhil_awgs_testing/20260522_ADAPTIVE_SAMPLING_BAMS_complete/SAMPLE_02.bam,full,
+SAMPLE_02_18h,/goast/nikhil_awgs_testing/20260515_ADAPTIVE_SAMPLING_BAMS/SAMPLE_02.bam,18h,early snapshot of SAMPLE_02

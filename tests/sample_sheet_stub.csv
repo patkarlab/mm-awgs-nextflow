@@ -1,0 +1,4 @@
+sample_id,minknow_bam,timepoint,notes
+SAMPLE_01,tests/refs/stub.fa,full,synthetic for CI
+SAMPLE_02,tests/refs/stub.fa,full,synthetic for CI
+SAMPLE_02_18h,tests/refs/stub.fa,18h,synthetic 18h snapshot
