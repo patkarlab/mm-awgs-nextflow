@@ -159,12 +159,31 @@ def parse_vcf(vcf_path: Path) -> List[SvRecord]:
             info = parse_info(info_field)
             sv_type = info.get("SVTYPE", "")
             mate_chrom, mate_pos = (None, None)
-            if sv_type == "BND":
+
+            if sv_type in ("BND", "TRA"):
+                # BND records have mate coords in ALT (e.g. N]chr11:69500000]).
+                # SURVIVOR renames cross-chromosome BNDs to TRA while keeping
+                # the same ALT format, so we parse both the same way.
                 mate_chrom, mate_pos = parse_bnd_alt(alt)
+                # Fallback: if ALT parsing failed (some SURVIVOR records use
+                # symbolic ALT like <TRA>), use SURVIVOR's CHR2/END INFO tags.
+                if mate_chrom is None:
+                    chr2 = info.get("CHR2")
+                    end = info.get("END")
+                    if chr2 and end:
+                        try:
+                            mate_chrom, mate_pos = chr2, int(end)
+                        except ValueError:
+                            pass
+
             elif sv_type in ("DEL", "DUP", "INV", "INS"):
+                # Same-chromosome events: mate side is END on the same chrom.
                 end = info.get("END")
                 if end:
-                    mate_chrom, mate_pos = chrom, int(end)
+                    try:
+                        mate_chrom, mate_pos = chrom, int(end)
+                    except ValueError:
+                        pass
             out.append(SvRecord(
                 chrom=chrom, pos=pos, sv_id=sv_id, sv_type=sv_type,
                 mate_chrom=mate_chrom, mate_pos=mate_pos,
