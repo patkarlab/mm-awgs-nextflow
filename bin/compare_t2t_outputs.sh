@@ -76,10 +76,12 @@ resolve_severus_vcf() {
     local root="$1"
     local sample="$2"
     # Layout A: bash production       -> <root>/t2t/calls/severus/<sample>/...
-    # Layout B: Nextflow port (v0.1)  -> <root>/t2t/calls/severus/severus_out/...
+    # Layout B: Nextflow v0.1         -> <root>/t2t/calls/severus/severus_out/...
+    # Layout C: Nextflow v0.2 cohort  -> <root>/t2t/calls/severus/<sample>/severus_out/...
     local bases=(
         "${root}/t2t/calls/severus/${sample}"
         "${root}/t2t/calls/severus/severus_out"
+        "${root}/t2t/calls/severus/${sample}/severus_out"
     )
     for base in "${bases[@]}"; do
         for cand in \

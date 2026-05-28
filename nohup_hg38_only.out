@@ -1,14 +1,201 @@
 
  N E X T F L O W   ~  version 25.10.4
 
-Launching `main.nf` [chaotic_linnaeus] DSL2 - revision: ee594dcd41
+Launching `main.nf` [determined_goldstine] DSL2 - revision: ee594dcd41
 
 WARN: Config setting `docker.userEmulation` is not supported anymore
 [-        ] MM_…GS:HG38_TRACK:REALIGN_HG38 -
-
-executor >  local (1)
-[d8/515434] MM_…GN_HG38 (11F202612108_18h) | 0 of 1
 [-        ] MM_AWGS:HG38_TRACK:CLAIRS_TO   -
 [-        ] MM_AWGS:HG38_TRACK:ICHORCNA    -
 [-        ] MM_…S:HG38_TRACK:CLAIR3_PHASED -
 [-        ] MM_…_TRACK:VEP_ANNOTATE_CLAIR3 -
+
+executor >  local (1)
+[9c/dad97f] MM_…GN_HG38 (11F202612108_18h) | 0 o
+executor >  local (1)
+[d8/515434] MM_…GN_HG38 (11F202612108_18h) | 0 of 1
+[-        ] MM_AWGS:HG38_TRACK:CLAIRS_TO   -
+[-        ] MM_AWGS:HG38_TRACK:ICHORCNA    -
+[-        ] MM_…S:H
+executor >  local (1)
+[9c/dad97f] MM_…GN_HG38 (11F202612108_18h) | 1 of 1 ✔
+[-        ] MM_AWGS:HG38_TRACK:CLAIRS_TO   -
+[-        ] MM_AWGS:HG38_TRACK:ICHORCNA    -
+[-        ] MM_…S:HG38_TRACK:CLAIR3_PHASED -
+[-        ] MM_…_TRACK:VEP_ANNOTATE_CLAIR3 -
+
+executor >  local (2)
+[9c/dad97f] MM_…GN_HG38 (11F202612108_18h) | 1 of 1 ✔
+[53/f75540] MM_…AIRS_TO (11F202612108_18h) | 0 of 1
+[-        ] MM_AWGS:HG38_TRACK:ICHORCNA    | 0 of 1
+[-        ] MM_…S:HG38_TRACK:CLAIR3_PHASED | 0 of 1
+[-        ] MM_…_TRACK:VEP_ANNOTATE_CLAIR3 -
+
+executor >  local (3)
+[9c/dad97f] MM_…GN_HG38 (11F202612108_18h) | 1 of 1 ✔
+[53/f75540] MM_…AIRS_TO (11F202612108_18h) | 0 of 1
+[7b/f04306] MM_…CHORCNA (11F202612108_18h) | 0 of 1
+[-        ] MM_…S:HG38_TRACK:CLAIR3_PHASED | 0 of 1
+[-        ] MM_…_TRACK:VEP_ANNOTATE_CLAIR3 -
+
+executor >  local (3)
+[9c/dad97f] MM_…GN_HG38 (11F202612108_18h) | 1 of 1 ✔
+[53/f75540] MM_…AIRS_TO (11F202612108_18h) | 0 of 1
+[7b/f04306] MM_…CHORCNA (11F202612108_18h) | 1 of 1 ✔
+[-        ] MM_…S:HG38_TRACK:CLAIR3_PHASED | 0 of 1
+[-        ] MM_…_TRACK:VEP_ANNOTATE_CLAIR3 -
+
+executor >  local (4)
+[9c/dad97f] MM_…GN_HG38 (11F202612108_18h) | 1 of 1 ✔
+[53/f75540] MM_…AIRS_TO (11F202612108_18h) | 1 of 1 ✔
+[7b/f04306] MM_…CHORCNA (11F202612108_18h) | 1 of 1 ✔
+[17/8c4b31] MM_…_PHASED (11F202612108_18h) | 0 of 1
+[-        ] MM_…_TRACK:VEP_ANNOTATE_CLAIR3 -
+
+executor >  local (4)
+[9c/dad97f] MM_…GN_HG38 (11F202612108_18h) | 1 of 1 ✔
+[53/f75540] MM_…AIRS_TO (11F202612108_18h) | 1 of 1 ✔
+[7b/f04306] MM_…CHORCNA (11F202612108_18h) | 1 of 1 ✔
+[17/8c4b31] MM_…_PHASED (11F202612108_18h) | 0 of 1
+[-        ] MM_…_TRACK:VEP_ANNOTATE_CLAIR3 -
+
+executor >  local (4)
+[9c/dad97f] MM_…GN_HG38 (11F202612108_18h) | 1 of 1 ✔
+[53/f75540] MM_…AIRS_TO (11F202612108_18h) | 1 of 1 ✔
+[7b/f04306] MM_…CHORCNA (11F202612108_18h) | 1 of 1 ✔
+[17/8c4b31] MM_…_PHASED (11F202612108_18h) | 1 of 1 ✔
+[-        ] MM_…_TRACK:VEP_ANNOTATE_CLAIR3 -
+
+executor >  local (5)
+[9c/dad97f] MM_…GN_HG38 (11F202612108_18h) | 1 of 1 ✔
+[53/f75540] MM_…AIRS_TO (11F202612108_18h) | 1 of 1 ✔
+[7b/f04306] MM_…CHORCNA (11F202612108_18h) | 1 of 1 ✔
+[17/8c4b31] MM_…_PHASED (11F202612108_18h) | 1 of 1 ✔
+[4f/1e1023] MM_…_CLAIR3 (11F202612108_18h) | 0 of 1
+
+executor >  local (5)
+[9c/dad97f] MM_…GN_HG38 (11F202612108_18h) | 1 of 1 ✔
+[53/f75540] MM_…AIRS_TO (11F202612108_18h) | 1 of 1 ✔
+[7b/f04306] MM_…CHORCNA (11F202612108_18h) | 1 of 1 ✔
+[17/8c4b31] MM_…_PHASED (11F202612108_18h) | 1 of 1 ✔
+[4f/1e1023] MM_…_CLAIR3 (11F202612108_18h) | 1 of 1 ✔
+
+executor >  local (5)
+[9c/dad97f] MM_…GN_HG38 (11F202612108_18h) | 1 of 1 ✔
+[53/f75540] MM_…AIRS_TO (11F202612108_18h) | 1 of 1 ✔
+[7b/f04306] MM_…CHORCNA (11F202612108_18h) | 1 of 1 ✔
+[17/8c4b31] MM_…_PHASED (11F202612108_18h) | 1 of 1 ✔
+[4f/1e1023] MM_…_CLAIR3 (11F202612108_18h) | 1 of 1 ✔
+
+============================================================
+mm-awgs-nextflow run complete
+============================================================
+status:        SUCCESS
+runName:       determined_goldstine
+duration:      12m 36s
+outdir:        results_hg38_only
+workDir:       /goast/mm-awgs-nextflow/work
+
+Completed at: 28-May-2026 06:57:50
+Duration    : 12m 36s
+CPU hours   : 10.1
+Succeeded   : 5
+
+
+Y" ]; then
+      echo "WARNING: primary read count mismatch: delta = $((OUTPUT_PRIMARY - INPUT_PRIMARY))" >&2
+  fi
+  
+  cat <<-END_VERSIONS > versions.yml
+  "MM_AWGS:HG38_TRACK:REALIGN_HG38":
+      minimap2: $(minimap2 --version 2>&1)
+      samtools: $(samtools --version | head -1 | awk '{print $NF}')
+  END_VERSIONS
+
+Command exit status:
+  1
+
+Command output:
+  (empty)
+
+Work dir:
+  /goast/mm-awgs-nextflow/work/d8/5154349717278d565f4871d492a519
+
+Tip: when you have fixed the problem you can continue the execution adding the option `-resume` to the run command line
+
+ -- Check '.nextflow.log' file for details
+ERROR ~ Pipeline failed: null
+
+ -- Check '.nextflow.log' file for details
+
+executor >  local (1)
+[d8/515434] MM_…GN_HG38 (11F202612108_18h) | 0 of 1 ✘
+[-        ] MM_AWGS:HG38_TRACK:CLAIRS_TO   -
+[-        ] MM_AWGS:HG38_TRACK:ICHORCNA    -
+[-        ] MM_…S:HG38_TRACK:CLAIR3_PHASED -
+[-        ] MM_…_TRACK:VEP_ANNOTATE_CLAIR3 -
+Execution cancelled -- Finishing pending tasks before exit
+
+============================================================
+mm-awgs-nextflow run complete
+============================================================
+status:        FAILED
+runName:       chaotic_linnaeus
+duration:      1m 8s
+outdir:        results_hg38_only
+workDir:       /goast/mm-awgs-nextflow/work
+
+ERROR ~ Error executing process > 'MM_AWGS:HG38_TRACK:REALIGN_HG38 (11F202612108_18h)'
+
+Caused by:
+  Process `MM_AWGS:HG38_TRACK:REALIGN_HG38 (11F202612108_18h)` terminated with an error exit status (1)
+
+
+Command executed:
+
+  set -euo pipefail
+  
+  # Capture input primary read count for the post-realign QC check.
+  INPUT_PRIMARY=$(samtools view -c -F 0x900 11F202612108_18h.t2t.bam)
+  echo "Input primary read count: $INPUT_PRIMARY"
+  
+  samtools fastq -T '*' 11F202612108_18h.t2t.bam \
+      | minimap2 -ax map-ont -y --MD --secondary=no -t 64 /goast/hemat_data/references/hg38_broad/Homo_sapiens_assembly38.fasta - \
+      | samtools sort -@ 8 -o 11F202612108_18h.hg38.bam -
+  
+  # Index in the same work dir so downstream symlinks resolve together.
+  samtools index -@ 8 11F202612108_18h.hg38.bam
+  
+  # Validate output BAM structure.
+  samtools quickcheck 11F202612108_18h.hg38.bam
+  
+  # Primary-read-count must match input. A delta means reads were lost
+  # (unlikely with map-ont) or the pipe was truncated.
+  OUTPUT_PRIMARY=$(samtools view -c -F 0x900 11F202612108_18h.hg38.bam)
+  echo "Output primary read count: $OUTPUT_PRIMARY"
+  if [ "$INPUT_PRIMARY" -ne "$OUTPUT_PRIMARY" ]; then
+      echo "WARNING: primary read count mismatch: delta = $((OUTPUT_PRIMARY - INPUT_PRIMARY))" >&2
+  fi
+  
+  cat <<-END_VERSIONS > versions.yml
+  "MM_AWGS:HG38_TRACK:REALIGN_HG38":
+      minimap2: $(minimap2 --version 2>&1)
+      samtools: $(samtools --version | head -1 | awk '{print $NF}')
+  END_VERSIONS
+
+Command exit status:
+  1
+
+Command output:
+  (empty)
+
+Work dir:
+  /goast/mm-awgs-nextflow/work/d8/5154349717278d565f4871d492a519
+
+Tip: when you have fixed the problem you can continue the execution adding the option `-resume` to the run command line
+
+ -- Check '.nextflow.log' file for details
+ERROR ~ Pipeline failed: null
+
+ -- Check '.nextflow.log' file for details
+

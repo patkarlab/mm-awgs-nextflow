@@ -94,7 +94,8 @@ resolve_clair3_dir() {
     local root="$1" sample="$2"
     for d in \
         "${root}/hg38/clair3_phased/${sample}" \
-        "${root}/hg38/clair3_phased/clair3_out"
+        "${root}/hg38/clair3_phased/clair3_out" \
+        "${root}/hg38/clair3_phased/${sample}/clair3_out"
     do
         if [ -s "${d}/merge_output.vcf.gz" ]; then
             echo "$d"
@@ -111,7 +112,8 @@ resolve_vep_dir() {
     local root="$1" sample="$2"
     for d in \
         "${root}/hg38/calls/annotated_clair3/${sample}" \
-        "${root}/hg38/calls/annotated_clair3/vep_out"
+        "${root}/hg38/calls/annotated_clair3/vep_out" \
+        "${root}/hg38/calls/annotated_clair3/${sample}/vep_out"
     do
         if [ -s "${d}/${sample}.all_annotated.tsv" ] || [ -s "${d}/${sample}.somatic_candidates.tsv" ]; then
             echo "$d"
@@ -126,7 +128,8 @@ resolve_clairs_to_dir() {
     local root="$1" sample="$2"
     for d in \
         "${root}/hg38/calls/clairs_to/${sample}" \
-        "${root}/hg38/calls/clairs_to/clairs_to_out"
+        "${root}/hg38/calls/clairs_to/clairs_to_out" \
+        "${root}/hg38/calls/clairs_to/${sample}/clairs_to_out"
     do
         if [ -d "$d" ]; then
             echo "$d"
@@ -142,7 +145,8 @@ resolve_ichorcna_params() {
     for p in \
         "${root}/hg38/calls/ichorcna/${sample}/${sample}.params.txt" \
         "${root}/hg38/calls/ichorcna/ichorcna_out/${sample}.params.txt" \
-        "${root}/hg38/calls/ichorcna/${sample}.params.txt"
+        "${root}/hg38/calls/ichorcna/${sample}.params.txt" \
+        "${root}/hg38/calls/ichorcna/${sample}/ichorcna_out/${sample}.params.txt"
     do
         if [ -s "$p" ]; then
             echo "$p"
