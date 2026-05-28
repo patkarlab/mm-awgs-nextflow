@@ -7,8 +7,8 @@ process REALIGN_HG38 {
     tuple val(meta), path(minknow_bam)
 
     output:
-    tuple val(meta), path("${meta.id}.hg38.bam"), emit: bam
-    path "versions.yml",                           emit: versions
+    tuple val(meta), path("${meta.id}.hg38.bam"), path("${meta.id}.hg38.bam.bai"), emit: bam_bai
+    path "versions.yml",                                                            emit: versions
 
     script:
     // Critical difference from REALIGN_T2T:
@@ -18,6 +18,14 @@ process REALIGN_HG38 {
     // round-trip. This is intentional for the hg38 track — the SA-tag
     // staleness issue that motivates dropping these flags on T2T does not
     // apply here, since the T2T BAM already has chr-named SA tags.
+    //
+    // We also samtools-index the BAM here (in the same work dir) instead of
+    // in a separate SAMTOOLS_INDEX_HG38 step. Reason: when bam and bai live
+    // in different upstream work dirs, downstream consumers that do
+    // readlink -f on the BAM (e.g. Clair3's run_clair3.sh wrapper) look for
+    // the BAI next to the resolved BAM path and don't find it. Colocating
+    // both in this module's work dir fixes that — downstream symlinks
+    // resolve to the same upstream dir for both files.
     def aligner_target = params.hg38_mmi && file(params.hg38_mmi).exists() ? params.hg38_mmi : params.hg38_fasta
     """
     set -euo pipefail
@@ -29,6 +37,9 @@ process REALIGN_HG38 {
     samtools fastq -T '*' ${minknow_bam} \\
         | minimap2 -ax map-ont -y --MD --secondary=no -t ${task.cpus} ${aligner_target} - \\
         | samtools sort -@ 8 -o ${meta.id}.hg38.bam -
+
+    # Index in the same work dir so downstream symlinks resolve together.
+    samtools index -@ 8 ${meta.id}.hg38.bam
 
     # Validate output BAM structure.
     samtools quickcheck ${meta.id}.hg38.bam
@@ -50,7 +61,7 @@ process REALIGN_HG38 {
 
     stub:
     """
-    touch ${meta.id}.hg38.bam
+    touch ${meta.id}.hg38.bam ${meta.id}.hg38.bam.bai
     echo '"${task.process}": stub' > versions.yml
     """
 }

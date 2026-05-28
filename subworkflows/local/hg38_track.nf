@@ -18,7 +18,6 @@
  */
 
 include { REALIGN_HG38         } from '../../modules/local/realign_hg38.nf'
-include { SAMTOOLS_INDEX_HG38  } from '../../modules/local/samtools_index.nf'
 include { CLAIRS_TO            } from '../../modules/local/clairs_to.nf'
 include { ICHORCNA             } from '../../modules/local/ichorcna.nf'
 include { CLAIR3_PHASED        } from '../../modules/local/clair3_phased.nf'
@@ -30,9 +29,12 @@ workflow HG38_TRACK {
     minknow_bams   // [meta, minknow_bam]
 
     main:
+    // REALIGN_HG38 emits [meta, bam, bai] directly — indexing is done in the
+    // same work dir as the realignment to keep BAM and BAI colocated. This
+    // matters for tools like Clair3 whose wrapper resolves the BAM symlink
+    // and looks for the BAI next to the resolved path.
     REALIGN_HG38(minknow_bams)
-    SAMTOOLS_INDEX_HG38(REALIGN_HG38.out.bam)
-    hg38_bam_bai = SAMTOOLS_INDEX_HG38.out.bam_bai   // [meta, bam, bai]
+    hg38_bam_bai = REALIGN_HG38.out.bam_bai   // [meta, bam, bai]
 
     if (!params.skip_clairs_to) {
         CLAIRS_TO(hg38_bam_bai)

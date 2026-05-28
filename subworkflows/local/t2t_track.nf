@@ -16,7 +16,6 @@
  */
 
 include { REALIGN_T2T                 } from '../../modules/local/realign_t2t.nf'
-include { SAMTOOLS_INDEX_T2T          } from '../../modules/local/samtools_index.nf'
 include { SNIFFLES                    } from '../../modules/local/sniffles.nf'
 include { CUTESV                      } from '../../modules/local/cutesv.nf'
 include { SEVERUS                     } from '../../modules/local/severus.nf'
@@ -29,9 +28,11 @@ workflow T2T_TRACK {
     minknow_bams   // [meta, minknow_bam]
 
     main:
+    // REALIGN_T2T emits [meta, bam, bai] directly — indexing is done in the
+    // same work dir as the realignment to keep BAM and BAI colocated for
+    // downstream tools that resolve symlinks (e.g. Clair3's wrapper).
     REALIGN_T2T(minknow_bams)
-    SAMTOOLS_INDEX_T2T(REALIGN_T2T.out.bam)
-    t2t_bam_bai = SAMTOOLS_INDEX_T2T.out.bam_bai   // [meta, bam, bai]
+    t2t_bam_bai = REALIGN_T2T.out.bam_bai   // [meta, bam, bai]
 
     if (!params.skip_sv_calling) {
         SNIFFLES(t2t_bam_bai)
