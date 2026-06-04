@@ -67,3 +67,7 @@ work/
 .nextflow.log*
 nohup_*.out
 nohup_*.err
+nohup_*
+test_cohort_*.csv
+validation/
+results_t2t_only/
