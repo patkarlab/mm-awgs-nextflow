@@ -13,7 +13,7 @@ emits a row of:
   - both breakpoints (chrom, pos, gene region)
   - whether the pair matches a known MM partner pair (from dictionary)
   - supporting callers inferred from SURVIVOR's SUPP_VEC
-  - support read counts from RE / SR
+  - support read counts from FORMAT/DV (fallback INFO RE / SUPPORT / SR)
 
 The dictionary file is the only source of biological priors. The script
 itself never hardcodes any expected breakpoints, sample-specific findings,
@@ -63,6 +63,7 @@ class SvRecord:
     filt: str
     info: Dict[str, str]
     callers: List[str]
+    support: str = ""
 
 
 def load_panel(bed_path: Path) -> List[PanelRegion]:
@@ -141,6 +142,41 @@ def infer_callers(info: Dict[str, str]) -> List[str]:
     return out
 
 
+def support_reads_from(info: Dict[str, str], fmt: str, sample_cols: List[str]) -> str:
+    """
+    Variant-supporting read count for a record, read generically (no hardcoded
+    calls). The merged VCF carries one sample column per input caller; the
+    caller that detected the junction holds the real FORMAT/DV while the others
+    are zero/absent, so DV is taken as the MAX across all sample columns. If no
+    DV is present, fall back to caller-specific INFO tags:
+      RE       (CuteSV)
+      SUPPORT  (Sniffles)
+      SR       (generic)
+      SUPP_READS first colon-field (Severus, e.g. "2:0:0:2:0:0" -> 2)
+    """
+    if fmt:
+        keys = fmt.split(":")
+        best = None
+        for col in sample_cols:
+            if not col or col in (".", "./."):
+                continue
+            f = dict(zip(keys, col.split(":")))
+            dv = f.get("DV", "")
+            if dv.isdigit():
+                best = int(dv) if best is None else max(best, int(dv))
+        if best is not None:
+            return str(best)
+    for tag in ("RE", "SUPPORT", "SR"):
+        v = str(info.get(tag, ""))
+        if v.isdigit():
+            return v
+    sr = str(info.get("SUPP_READS", ""))
+    first = sr.split(":")[0] if sr else ""
+    if first.isdigit():
+        return first
+    return ""
+
+
 def open_vcf(path: Path):
     return gzip.open(path, "rt") if str(path).endswith(".gz") else open(path, "rt")
 
@@ -184,10 +220,17 @@ def parse_vcf(vcf_path: Path) -> List[SvRecord]:
                         mate_chrom, mate_pos = chrom, int(end)
                     except ValueError:
                         pass
+
+            # FORMAT + per-caller sample columns carry read support (DV).
+            fmt = cols[8] if len(cols) > 8 else ""
+            sample_cols = cols[9:] if len(cols) > 9 else []
+            support = support_reads_from(info, fmt, sample_cols)
+
             out.append(SvRecord(
                 chrom=chrom, pos=pos, sv_id=sv_id, sv_type=sv_type,
                 mate_chrom=mate_chrom, mate_pos=mate_pos,
                 filt=filt, info=info, callers=infer_callers(info),
+                support=support,
             ))
     return out
 
@@ -237,7 +280,7 @@ def annotate(records, panel, dictionary, sample):
             "callers":        ",".join(r.callers) or "unknown",
             "n_callers":      str(len(r.callers)),
             "supp_vec":       r.info.get("SUPP_VEC", ""),
-            "support_reads":  r.info.get("RE", r.info.get("SR", "")),
+            "support_reads":  r.support,
         })
     return out
 

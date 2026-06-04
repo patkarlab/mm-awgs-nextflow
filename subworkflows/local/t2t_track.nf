@@ -21,6 +21,8 @@ include { CUTESV                      } from '../../modules/local/cutesv.nf'
 include { SEVERUS                     } from '../../modules/local/severus.nf'
 include { SURVIVOR_MERGE              } from '../../modules/local/survivor_merge.nf'
 include { ANNOTATE_MM_TRANSLOCATIONS  } from '../../modules/local/annotate_mm_translocations.nf'
+include { AUGMENT_SV_SUPPORT   } from '../../modules/local/augment_sv_support'
+include { MERGE_TRANSLOCATIONS } from '../../modules/local/merge_translocations'
 
 workflow T2T_TRACK {
 
@@ -51,6 +53,21 @@ workflow T2T_TRACK {
 
         if (!params.skip_mm_annotation) {
             ANNOTATE_MM_TRANSLOCATIONS(SURVIVOR_MERGE.out.merged_vcf)
+
+            // Layer real per-caller read support onto the annotated TSV,
+            // then unite near-identical translocation calls. Join on meta;
+            // drop the .tbi from Sniffles/CuteSV (augmenter needs the .vcf);
+            // Severus is already a plain .vcf.
+            ch_augment_in = ANNOTATE_MM_TRANSLOCATIONS.out.tsv
+                .join(SNIFFLES.out.vcf, by: 0)
+                .join(CUTESV.out.vcf,   by: 0)
+                .join(SEVERUS.out.vcf,  by: 0)
+                .map { meta, annotated, sn_vcf, sn_tbi, cu_vcf, cu_tbi, sv_vcf ->
+                    tuple(meta, annotated, sn_vcf, cu_vcf, sv_vcf)
+                }
+
+            AUGMENT_SV_SUPPORT(ch_augment_in)
+            MERGE_TRANSLOCATIONS(AUGMENT_SV_SUPPORT.out.annotated)
         }
     }
 
@@ -60,5 +77,6 @@ workflow T2T_TRACK {
     cutesv_vcf       = params.skip_sv_calling     ? Channel.empty() : CUTESV.out.vcf
     severus_outdir   = params.skip_sv_calling     ? Channel.empty() : SEVERUS.out.outdir
     merged_vcf       = params.skip_sv_calling     ? Channel.empty() : SURVIVOR_MERGE.out.merged_vcf
-    mm_annotated_tsv = (params.skip_sv_calling || params.skip_mm_annotation) ? Channel.empty() : ANNOTATE_MM_TRANSLOCATIONS.out.tsv
+    mm_annotated_tsv = (params.skip_sv_calling || params.skip_mm_annotation) ? Channel.empty() : AUGMENT_SV_SUPPORT.out.annotated
+    translocations   = (params.skip_sv_calling || params.skip_mm_annotation) ? Channel.empty() : MERGE_TRANSLOCATIONS.out.translocations
 }
