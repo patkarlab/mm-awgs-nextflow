@@ -23,6 +23,7 @@ include { SURVIVOR_MERGE              } from '../../modules/local/survivor_merge
 include { ANNOTATE_MM_TRANSLOCATIONS  } from '../../modules/local/annotate_mm_translocations.nf'
 include { AUGMENT_SV_SUPPORT   } from '../../modules/local/augment_sv_support'
 include { MERGE_TRANSLOCATIONS } from '../../modules/local/merge_translocations'
+include { QC_ONTARGET          } from '../../modules/local/qc_ontarget'
 
 workflow T2T_TRACK {
 
@@ -35,6 +36,13 @@ workflow T2T_TRACK {
     // downstream tools that resolve symlinks (e.g. Clair3's wrapper).
     REALIGN_T2T(minknow_bams)
     t2t_bam_bai = REALIGN_T2T.out.bam_bai   // [meta, bam, bai]
+
+    // On-target QC: per-region coverage, read-length + basecaller-Q stats,
+    // and histogram PNGs. Independent of SV calling; runs off the realigned
+    // BAM and the v6 panel BED. Gated so it can be skipped.
+    if (!params.skip_qc) {
+        QC_ONTARGET(t2t_bam_bai, file(params.panel_bed_t2t))
+    }
 
     if (!params.skip_sv_calling) {
         SNIFFLES(t2t_bam_bai)
@@ -73,6 +81,8 @@ workflow T2T_TRACK {
 
     emit:
     t2t_bam_bai      = t2t_bam_bai
+    qc_coverage      = params.skip_qc ? Channel.empty() : QC_ONTARGET.out.coverage
+    qc_summary       = params.skip_qc ? Channel.empty() : QC_ONTARGET.out.summary
     sniffles_vcf     = params.skip_sv_calling     ? Channel.empty() : SNIFFLES.out.vcf
     cutesv_vcf       = params.skip_sv_calling     ? Channel.empty() : CUTESV.out.vcf
     severus_outdir   = params.skip_sv_calling     ? Channel.empty() : SEVERUS.out.outdir
