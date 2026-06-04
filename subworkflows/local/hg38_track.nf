@@ -22,6 +22,7 @@ include { CLAIRS_TO            } from '../../modules/local/clairs_to.nf'
 include { ICHORCNA             } from '../../modules/local/ichorcna.nf'
 include { CLAIR3_PHASED        } from '../../modules/local/clair3_phased.nf'
 include { VEP_ANNOTATE_CLAIR3  } from '../../modules/local/vep_annotate_clair3.nf'
+include { FILTER_V6_REPORT    } from '../../modules/local/filter_v6_report.nf'
 
 workflow HG38_TRACK {
 
@@ -46,6 +47,9 @@ workflow HG38_TRACK {
         CLAIR3_PHASED(hg38_bam_bai)
         if (!params.skip_vep_annotate) {
             VEP_ANNOTATE_CLAIR3(CLAIR3_PHASED.out.merge_output)
+            if (!params.skip_v6_filter) {
+                FILTER_V6_REPORT(VEP_ANNOTATE_CLAIR3.out.candidates_tsv)
+            }
         }
     }
 
@@ -55,4 +59,5 @@ workflow HG38_TRACK {
     ichorcna_outdir          = params.skip_ichorcna     ? Channel.empty() : ICHORCNA.out.outdir
     clair3_phased_outdir     = params.skip_clair3_phased ? Channel.empty() : CLAIR3_PHASED.out.outdir
     clair3_annotated_outdir  = (params.skip_clair3_phased || params.skip_vep_annotate) ? Channel.empty() : VEP_ANNOTATE_CLAIR3.out.outdir
+    v6_report                = (params.skip_clair3_phased || params.skip_vep_annotate || params.skip_v6_filter) ? Channel.empty() : FILTER_V6_REPORT.out.clinical
 }

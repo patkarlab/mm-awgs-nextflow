@@ -37,7 +37,7 @@ process VEP_ANNOTATE_CLAIR3 {
 
     if [ "\$n_pass" -eq 0 ]; then
         echo "No PASS variants — emitting empty TSVs and exiting."
-        printf "chrom\\tpos\\tref\\talt\\tqual\\tvariant_type\\tgene\\ttranscript\\tbiotype\\tcanonical\\tconsequence\\timpact\\texon\\tdomains\\trs_id\\tpop_af_max\\tpop_af_max_source\\tclinvar_sig\\ttumor_af\\n" > "\$all_tsv"
+        printf "chrom\\tpos\\tref\\talt\\tqual\\tvariant_type\\tgene\\ttranscript\\tbiotype\\tcanonical\\tconsequence\\timpact\\texon\\tdomains\\trs_id\\tpop_af_max\\tpop_af_max_source\\tclinvar_sig\\ttumor_af\\tREF_COUNT\\tALT_COUNT\\tDP\\n" > "\$all_tsv"
         cp "\$all_tsv" "\$cand_tsv"
         echo '"${task.process}": no-variants' > versions.yml
         exit 0
@@ -83,17 +83,20 @@ process VEP_ANNOTATE_CLAIR3 {
     bcftools +split-vep \\
         "\$ann_vcf" \\
         -d \\
-        -f '%CHROM\\t%POS\\t%REF\\t%ALT\\t%QUAL\\t%SYMBOL\\t%Feature\\t%BIOTYPE\\t%CANONICAL\\t%Consequence\\t%IMPACT\\t%EXON\\t%DOMAINS\\t%Existing_variation\\t%MAX_AF\\t%MAX_AF_POPS\\t%CLIN_SIG\\t[%AF]\\n' \\
+        -f '%CHROM\\t%POS\\t%REF\\t%ALT\\t%QUAL\\t%SYMBOL\\t%Feature\\t%BIOTYPE\\t%CANONICAL\\t%Consequence\\t%IMPACT\\t%EXON\\t%DOMAINS\\t%Existing_variation\\t%MAX_AF\\t%MAX_AF_POPS\\t%CLIN_SIG\\t[%AF]\\t[%AD]\\t[%DP]\\n' \\
         -A tab \\
     | awk -v FS='\\t' -v OFS='\\t' '
         {
             if (length(\$3)==1 && length(\$4)==1) { vtype="SNV" } else { vtype="indel" }
-            print \$1, \$2, \$3, \$4, \$5, vtype, \$6, \$7, \$8, \$9, \$10, \$11, \$12, \$13, \$14, \$15, \$16, \$17, \$18
+            ad=\$19; dp=\$20; rc="-1"; ac="-1"
+            if (ad != "" && ad != ".") { n=split(ad, a, ","); if (a[1] != "") rc=a[1]; if (n>=2 && a[2] != "") ac=a[2] }
+            if (dp=="" || dp==".") dp="-1"
+            print \$1, \$2, \$3, \$4, \$5, vtype, \$6, \$7, \$8, \$9, \$10, \$11, \$12, \$13, \$14, \$15, \$16, \$17, \$18, rc, ac, dp
         }
         ' > "\${all_tsv}.body"
 
     {
-        printf "chrom\\tpos\\tref\\talt\\tqual\\tvariant_type\\tgene\\ttranscript\\tbiotype\\tcanonical\\tconsequence\\timpact\\texon\\tdomains\\trs_id\\tpop_af_max\\tpop_af_max_source\\tclinvar_sig\\ttumor_af\\n"
+        printf "chrom\\tpos\\tref\\talt\\tqual\\tvariant_type\\tgene\\ttranscript\\tbiotype\\tcanonical\\tconsequence\\timpact\\texon\\tdomains\\trs_id\\tpop_af_max\\tpop_af_max_source\\tclinvar_sig\\ttumor_af\\tREF_COUNT\\tALT_COUNT\\tDP\\n"
         cat "\${all_tsv}.body"
     } > "\$all_tsv"
     rm -f "\${all_tsv}.body"
