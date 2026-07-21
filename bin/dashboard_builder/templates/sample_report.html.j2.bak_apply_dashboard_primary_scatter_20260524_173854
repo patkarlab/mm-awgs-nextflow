@@ -1,0 +1,888 @@
+{% extends "base.html.j2" %}
+{% set sample = ctx.sample %}
+{% set m = ctx.hsmetrics.metrics if ctx.hsmetrics else {} %}
+
+{% block title %}{{ sample }} — Targeted-Seq Report{% endblock %}
+
+{% block body %}
+<div class="d-flex">
+
+  {# ---------- LEFT SIDEBAR ---------- #}
+  <nav class="tspipe-sidebar">
+    <div class="mb-3">
+      <a href="{{ cohort_link | default('../cohort_index.html') }}" class="text-decoration-none text-secondary small">
+        &laquo; Back to cohort
+      </a>
+    </div>
+    <h6 class="text-uppercase text-muted small mb-1">Sample</h6>
+    <div class="fw-semibold mb-3" style="word-break: break-all;">{{ sample }}</div>
+
+    <ul class="nav nav-pills flex-column" id="sample-tabs" role="tablist">
+      <li class="nav-item"><button class="nav-link active" data-bs-toggle="pill" data-bs-target="#tab-overview"  type="button" role="tab">Overview</button></li>
+      <li class="nav-item"><button class="nav-link"        data-bs-toggle="pill" data-bs-target="#tab-qc"        type="button" role="tab">QC</button></li>
+      <li class="nav-item"><button class="nav-link"        data-bs-toggle="pill" data-bs-target="#tab-clinical"  type="button" role="tab">Variants &mdash; Clinical</button></li>
+      <li class="nav-item"><button class="nav-link"        data-bs-toggle="pill" data-bs-target="#tab-filtered"  type="button" role="tab">Variants &mdash; All Filtered</button></li>
+      <li class="nav-item"><button class="nav-link"        data-bs-toggle="pill" data-bs-target="#tab-flt3"      type="button" role="tab">FLT3</button></li>
+      <li class="nav-item"><button class="nav-link"        data-bs-toggle="pill" data-bs-target="#tab-cnv"       type="button" role="tab">CNV</button></li>
+      <li class="nav-item"><button class="nav-link"        data-bs-toggle="pill" data-bs-target="#tab-igv"       type="button" role="tab">IGV</button></li>
+      <li class="nav-item"><button class="nav-link"        data-bs-toggle="pill" data-bs-target="#tab-reporting" type="button" role="tab">Reporting <span id="reporting-count-badge" class="badge bg-secondary ms-1" style="display:none">0</span></button></li>
+      <li class="nav-item"><button class="nav-link"        data-bs-toggle="pill" data-bs-target="#tab-files"     type="button" role="tab">Files</button></li>
+    </ul>
+
+    <div class="tspipe-footer small">
+      Generated {{ ctx.build_time }}<br>
+      Builder v{{ ctx.builder_version }}
+    </div>
+  </nav>
+
+  {# ---------- MAIN PANEL ---------- #}
+  <main class="tspipe-main flex-grow-1">
+    <div class="tab-content">
+
+      {# ===== Overview tab ===== #}
+      <div class="tab-pane fade show active" id="tab-overview" role="tabpanel">
+        <div class="d-flex align-items-center justify-content-between mb-3 flex-wrap gap-2">
+          <h3 class="mb-0">{{ sample }}</h3>
+          <span class="badge fs-6 qc-pill-pending">QC Review Pending</span>
+        </div>
+
+        <div class="row g-3 mb-4">
+          <div class="col-md-3">
+            <div class="tspipe-summary-card">
+              <div class="label">Mean Coverage</div>
+              {% if ctx.coverage and ctx.coverage.summary %}
+                <div class="value">{{ ctx.coverage.summary.mean_of_per_exon_means | format_num(0) }}x</div>
+                <div class="subvalue">mean of {{ ctx.coverage.summary.n_exons }} per-exon means &middot; duplicates included</div>
+              {% else %}
+                <div class="value">&mdash;</div>
+                <div class="subvalue">per-exon coverage not available</div>
+              {% endif %}
+            </div>
+          </div>
+          <div class="col-md-3">
+            <div class="tspipe-summary-card">
+              <div class="label">Low-Coverage Exons</div>
+              {% if ctx.coverage and ctx.coverage.summary %}
+                <div class="value">{{ ctx.coverage.summary.n_low_lt_100 }}</div>
+                <div class="subvalue">below 100x &middot; {{ ctx.coverage.summary.n_low_lt_250 }} below 250x</div>
+              {% else %}
+                <div class="value">&mdash;</div>
+              {% endif %}
+            </div>
+          </div>
+          <div class="col-md-3">
+            <div class="tspipe-summary-card">
+              <div class="label">% Target &ge; 100x (Picard)</div>
+              <div class="value">{{ (m.PCT_TARGET_BASES_100X * 100) | format_num(1) if m.PCT_TARGET_BASES_100X is not none else '—' }}%</div>
+              <div class="subvalue">Picard, dup-filtered</div>
+            </div>
+          </div>
+          <div class="col-md-3">
+            <div class="tspipe-summary-card">
+              <div class="label">Fold-80 Penalty</div>
+              <div class="value">{{ m.FOLD_80_BASE_PENALTY | format_num(2) if m.FOLD_80_BASE_PENALTY is not none else '—' }}</div>
+              <div class="subvalue">Uniformity</div>
+            </div>
+          </div>
+
+          <div class="col-md-3">
+            <div class="tspipe-summary-card">
+              <div class="label">AT Dropout</div>
+              <div class="value">{{ m.AT_DROPOUT | format_num(2) if m.AT_DROPOUT is not none else '—' }}</div>
+            </div>
+          </div>
+          <div class="col-md-3">
+            <div class="tspipe-summary-card">
+              <div class="label">GC Dropout</div>
+              <div class="value">{{ m.GC_DROPOUT | format_num(2) if m.GC_DROPOUT is not none else '—' }}</div>
+            </div>
+          </div>
+          <div class="col-md-3">
+            <div class="tspipe-summary-card">
+              <div class="label">Clinical Variants</div>
+              <div class="value">{{ ctx.clinical.n if ctx.clinical else '—' }}</div>
+              <div class="subvalue">{{ ctx.clinical.n_pass if ctx.clinical else '—' }} PASS</div>
+            </div>
+          </div>
+          <div class="col-md-3">
+            <div class="tspipe-summary-card">
+              <div class="label">FLT3-ITD</div>
+              <div class="value">
+                {% if ctx.flt3 and ctx.flt3.n_positive > 0 -%}
+                  Detected
+                {%- elif ctx.flt3 -%}
+                  Not detected
+                {%- else -%}
+                  &mdash;
+                {%- endif %}
+              </div>
+              <div class="subvalue">
+                {% if ctx.flt3 and ctx.flt3.n_positive > 0 %}{{ ctx.flt3.n_positive }} event(s){% endif %}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {% if ctx.coverage and ctx.coverage.summary and ctx.coverage.summary.low_lt_100_examples %}
+          <div class="alert alert-light border" role="alert">
+            <strong>Low-coverage exons (&lt;100x):</strong>
+            {% for r in ctx.coverage.summary.low_lt_100_examples %}
+              <span class="badge bg-light text-dark border me-1">{{ r.Gene }} {{ r.Exon }} &middot; {{ r.Mean_Coverage }}x</span>
+            {% endfor %}
+            {% if ctx.coverage.summary.n_low_lt_100 > ctx.coverage.summary.low_lt_100_examples | length %}
+              <span class="text-muted">+{{ ctx.coverage.summary.n_low_lt_100 - (ctx.coverage.summary.low_lt_100_examples | length) }} more</span>
+            {% endif %}
+          </div>
+        {% endif %}
+
+        <div class="alert alert-light border" role="alert">
+          <strong>Note:</strong> Plain-language QC alerts and verdict logic will be added in phase 2.
+          Phase 1 shows raw metrics only; all reporting is for technical review prior to clinical sign-off.
+        </div>
+      </div>
+
+      {# ===== QC tab ===== #}
+      <div class="tab-pane fade" id="tab-qc" role="tabpanel">
+
+        {# Pipeline-side QC dashboard, embedded for context. #}
+        {% if ctx.files.existing_dashboard %}
+          <h4>Pipeline QC dashboard</h4>
+          <p class="text-muted small mb-2">
+            The pre-existing dashboard generated by the pipeline (panel-level hero metrics,
+            per-gene coverage chart, low-coverage exon list). Mean coverage shown here uses
+            mosdepth-style numbers with duplicates included.
+          </p>
+          <iframe class="tspipe-iframe-full" data-src="./{{ ctx.files.existing_dashboard }}" loading="lazy"></iframe>
+        {% endif %}
+
+        <h4 class="mt-4">HsMetrics (Picard)</h4>
+        <p class="text-muted small mb-2">
+          Picard CollectHsMetrics uses MAPQ&ge;20, baseQ&ge;20, overlap-clipping and
+          duplicate exclusion. These numbers are typically lower than the mosdepth-style
+          mean coverage shown in the pipeline dashboard above.
+        </p>
+        {% if ctx.hsmetrics %}
+          <div class="row g-3 mb-4">
+            <div class="col-md-6">
+              <table class="table table-sm tspipe-kv-table">
+                <tbody>
+                  {% for k in ['MEAN_TARGET_COVERAGE','MEDIAN_TARGET_COVERAGE','MAX_TARGET_COVERAGE','MIN_TARGET_COVERAGE','ZERO_CVG_TARGETS_PCT','FOLD_80_BASE_PENALTY','HET_SNP_SENSITIVITY','HET_SNP_Q'] %}
+                    {% if m[k] is defined and m[k] is not none %}
+                      <tr><td class="label">{{ k }}</td><td class="value">{{ m[k] | format_num(3) }}</td></tr>
+                    {% endif %}
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+            <div class="col-md-6">
+              <table class="table table-sm tspipe-kv-table">
+                <tbody>
+                  {% for k in ['PCT_TARGET_BASES_1X','PCT_TARGET_BASES_10X','PCT_TARGET_BASES_30X','PCT_TARGET_BASES_100X','PCT_TARGET_BASES_250X','PCT_TARGET_BASES_500X','PCT_TARGET_BASES_1000X','PCT_EXC_DUPE','PCT_EXC_OFF_TARGET','AT_DROPOUT','GC_DROPOUT','FOLD_ENRICHMENT'] %}
+                    {% if m[k] is defined and m[k] is not none %}
+                      <tr><td class="label">{{ k }}</td><td class="value">{{ m[k] | format_num(3) }}</td></tr>
+                    {% endif %}
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        {% else %}
+          <div class="tspipe-empty">HsMetrics file not available for this sample.</div>
+        {% endif %}
+
+        <h4 class="mt-4">fastp QC report</h4>
+        {% if ctx.files.fastp %}
+          <iframe class="tspipe-iframe-full" data-src="./{{ ctx.files.fastp }}" loading="lazy"></iframe>
+        {% else %}
+          <div class="tspipe-empty">fastp report not available.</div>
+        {% endif %}
+
+        <h4 class="mt-4">Per-exon coverage</h4>
+        {% if ctx.coverage and ctx.coverage.rows %}
+          {{ macros.render_datatable('coverage-table', ctx.coverage.columns, ctx.coverage.rows) }}
+        {% else %}
+          <div class="tspipe-empty">Per-exon coverage file not available.</div>
+        {% endif %}
+      </div>
+
+      {# ===== Variants — Clinical tab ===== #}
+      <div class="tab-pane fade" id="tab-clinical" role="tabpanel">
+        <h4>Clinical variants</h4>
+        <p class="text-muted small mb-3">
+          Curated set from <code>somaticseq_clinical_final.tsv</code>. Use the filter
+          panel on the left to narrow the list; click a variant to see full details
+          and jump to its IGV view.
+        </p>
+        {% if ctx.clinical and ctx.clinical.rows %}
+          <div id="clinical-browser"></div>
+        {% else %}
+          <div class="tspipe-empty">No clinical variants file found.</div>
+        {% endif %}
+      </div>
+
+      {# ===== Variants — All Filtered tab ===== #}
+      <div class="tab-pane fade" id="tab-filtered" role="tabpanel">
+        <h4>All filtered variants</h4>
+        <p class="text-muted small mb-3">
+          Full annotated set from <code>somaticseq_filtered.tsv</code>. The filter
+          panel includes population-frequency and filter-status controls. Click a
+          variant to see all annotations. No IGV jump from this tab (the IGV report
+          is built from the clinical set only).
+        </p>
+        {% if ctx.filtered and ctx.filtered.rows %}
+          <div id="filtered-browser"></div>
+        {% else %}
+          <div class="tspipe-empty">No filtered variants file found.</div>
+        {% endif %}
+      </div>
+
+      {# ===== FLT3 tab ===== #}
+      <div class="tab-pane fade" id="tab-flt3" role="tabpanel">
+        <h4>FLT3-ITD</h4>
+        {% if ctx.flt3 is none %}
+          <div class="tspipe-empty">FLT3 consensus file not available.</div>
+        {% elif ctx.flt3.n_positive == 0 %}
+          <div class="alert alert-success" role="alert">
+            <strong>No FLT3-ITD detected</strong> in this sample by consensus calling.
+          </div>
+        {% else %}
+          {% for r in ctx.flt3.rows %}
+            <div class="card mb-3">
+              <div class="card-header">
+                <strong>Event {{ loop.index }}</strong>
+                &middot; status: <code>{{ r.status }}</code>
+                &middot; {{ r.n_tools }} tools
+              </div>
+              <div class="card-body">
+                <dl class="row mb-0">
+                  <dt class="col-sm-3">Length</dt>            <dd class="col-sm-9">{{ r.length_bp }} bp ({{ r.length_range }})</dd>
+                  <dt class="col-sm-3">Position (hg38)</dt>   <dd class="col-sm-9"><code>{{ r.pos_hg38 }}</code></dd>
+                  <dt class="col-sm-3">VAF range</dt>         <dd class="col-sm-9">{{ r.vaf_pct_min }}% &ndash; {{ r.vaf_pct_max }}% (mean {{ r.vaf_pct_mean }}%)</dd>
+                  <dt class="col-sm-3">Allelic ratio</dt>     <dd class="col-sm-9">{{ r.ar_min }} &ndash; {{ r.ar_max }} (mean {{ r.ar_mean }})</dd>
+                  <dt class="col-sm-3">Domain</dt>            <dd class="col-sm-9">{{ r.domain }}</dd>
+                  <dt class="col-sm-3">HGVSc / HGVSp</dt>     <dd class="col-sm-9"><code>{{ r.hgvsc }}</code> &middot; <code>{{ r.hgvsp }}</code></dd>
+                  <dt class="col-sm-3">Tools</dt>             <dd class="col-sm-9">{{ r.tools }}</dd>
+                </dl>
+                <details class="mt-3">
+                  <summary class="text-muted small">Raw per-tool calls</summary>
+                  <pre class="bg-light p-2 small mb-0">{{ r.raw_calls }}</pre>
+                </details>
+              </div>
+            </div>
+          {% endfor %}
+        {% endif %}
+      </div>
+
+      {# ===== CNV tab ===== #}
+      <div class="tab-pane fade" id="tab-cnv" role="tabpanel">
+        <div class="d-flex justify-content-between align-items-start mb-3">
+          <div>
+            <h4 class="mb-1">Copy number variants</h4>
+            <p class="text-muted small mb-0">
+              Tick a plot's "Include in report" box to add it to the Reporting tab.
+              Selections persist in this browser via <code>localStorage</code>.
+            </p>
+          </div>
+          <div>
+            <span id="cnv-selection-count-badge" class="badge bg-secondary" style="display:none">0</span>
+          </div>
+        </div>
+
+        {# ---- Clinical CNV calls table ---- #}
+        <h5 class="mt-2">Clinical CNV calls</h5>
+        {% if ctx.cnv.clinical_table and ctx.cnv.clinical_table.rows %}
+          {{ macros.render_datatable('cnv-clinical-table', ctx.cnv.clinical_table.columns, ctx.cnv.clinical_table.rows) }}
+        {% else %}
+          <div class="tspipe-empty">No clinical CNV calls table available.</div>
+        {% endif %}
+
+        {# ---- Genome-wide overview ---- #}
+        {% if ctx.cnv.scatter_png or ctx.cnv.overview %}
+          <h5 class="mt-4">Genome-wide overview</h5>
+          <div class="row g-3">
+            {% if ctx.cnv.scatter_png %}
+              {{ macros.render_cnv_plot_card('scatter::final', 'Genome-wide scatter (CNVkit)', ctx.cnv.scatter_png, 'col-12') }}
+            {% endif %}
+            {% for item in ctx.cnv.overview %}
+              {{ macros.render_cnv_plot_card('overview::' ~ item.label, item.label | title, item.path, 'col-md-6') }}
+            {% endfor %}
+          </div>
+        {% endif %}
+
+        {# ---- Per-chromosome (combined multi-panel views) ---- #}
+        {% if ctx.cnv.combined %}
+          <h5 class="mt-4">Per-chromosome combined views ({{ ctx.cnv.combined|length }})</h5>
+          <div class="row g-3">
+            {% for item in ctx.cnv.combined %}
+              {{ macros.render_cnv_plot_card('combined::chr' ~ item.chrom, 'chr' ~ item.chrom ~ ' (combined view)', item.path, 'col-md-6 col-xl-4') }}
+            {% endfor %}
+          </div>
+        {% endif %}
+
+        {# ---- Focused per-chromosome views ---- #}
+        {% if ctx.cnv.per_chrom %}
+          <h5 class="mt-4">Per-chromosome focused views ({{ ctx.cnv.per_chrom|length }})</h5>
+          <div class="row g-3">
+            {% for item in ctx.cnv.per_chrom %}
+              {{ macros.render_cnv_plot_card('per_chrom::chr' ~ item.chrom, item.label, item.path, 'col-md-6 col-xl-4') }}
+            {% endfor %}
+          </div>
+        {% endif %}
+
+        {# ---- Per-gene plots: clinically important first, all others collapsed ---- #}
+        {% if ctx.cnv.per_gene_priority %}
+          <h5 class="mt-4">Clinically important genes ({{ ctx.cnv.per_gene_priority|length }})</h5>
+          <p class="text-muted small mb-2">
+            KMT2A, IKZF1, CDKN2A, CDKN2B, PTPN, ETV6, TET2, TP53, NF1, ATM, RUNX1 &mdash;
+            shown first regardless of whether the per-gene plot exists for each.
+            {% if ctx.cnv.per_gene_priority|length < 11 %}
+              Note: {{ 11 - ctx.cnv.per_gene_priority|length }} priority gene(s)
+              do not have per-gene plots from the pipeline for this sample.
+            {% endif %}
+          </p>
+          <div class="row g-3">
+            {% for item in ctx.cnv.per_gene_priority %}
+              {{ macros.render_cnv_plot_card('per_gene::' ~ item.gene, item.gene, item.path, 'col-md-6 col-xl-4') }}
+            {% endfor %}
+          </div>
+        {% endif %}
+
+        {% if ctx.cnv.per_gene_other %}
+          <details class="mt-4">
+            <summary class="h5 mb-2" style="cursor:pointer">
+              All other panel genes ({{ ctx.cnv.per_gene_other|length }})
+              <span class="text-muted small">&mdash; click to expand</span>
+            </summary>
+            <div class="row g-3 mt-2">
+              {% for item in ctx.cnv.per_gene_other %}
+                {{ macros.render_cnv_plot_card('per_gene::' ~ item.gene, item.gene, item.path, 'col-md-6 col-xl-4') }}
+              {% endfor %}
+            </div>
+          </details>
+        {% endif %}
+
+        {# ---- Diagram PDF (viewable but not part of plot selection) ---- #}
+        {% if ctx.cnv.diagram_pdf %}
+          <h5 class="mt-4">Genome-wide diagram (PDF)</h5>
+          <p class="text-muted small mb-2">
+            Reference view only &mdash; PDFs don't embed in the print-to-PDF
+            export of the Reporting tab. Use the per-chromosome PNGs above
+            for plots that need to appear in the report.
+          </p>
+          <iframe class="tspipe-iframe-full" data-src="./{{ ctx.cnv.diagram_pdf }}" loading="lazy"></iframe>
+        {% endif %}
+      </div>
+
+      {# ===== IGV tab ===== #}
+      <div class="tab-pane fade" id="tab-igv" role="tabpanel">
+        <h4>IGV report</h4>
+        {% if ctx.files.igv_report %}
+          <iframe id="igv-frame" class="tspipe-iframe-full" data-src="./{{ ctx.files.igv_report }}" loading="lazy"></iframe>
+        {% else %}
+          <div class="tspipe-empty">IGV report not available.</div>
+        {% endif %}
+      </div>
+
+      {# ===== Reporting tab ===== #}
+      <div class="tab-pane fade" id="tab-reporting" role="tabpanel">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+          <div>
+            <h4 class="mb-1">Reporting</h4>
+            <p class="text-muted small mb-0">
+              Variants ticked in the Clinical tab and CNV plots ticked in the CNV
+              tab appear here in selection order. Selections persist in this
+              browser via <code>localStorage</code>. AMP/ASCO/CAP Tier and the
+              CNV interpretation captions are editable and also persist.
+              When CancerVar annotation is enabled at build time, the tier column
+              is pre-filled with the CancerVar (AMP/ASCO/CAP 2017) tier for each
+              newly-selected variant; you can edit or clear it like any manual value.
+            </p>
+          </div>
+          <div class="d-flex gap-2 align-items-start">
+            <button type="button" id="reporting-copy-btn" class="btn btn-sm btn-primary" disabled>
+              Copy as TSV
+            </button>
+            <button type="button" id="reporting-clear-btn" class="btn btn-sm btn-outline-danger" disabled>
+              Clear all
+            </button>
+            <span id="reporting-copied-toast" class="vb-copied-toast">Copied!</span>
+          </div>
+        </div>
+
+        <div id="reporting-empty" class="tspipe-empty">
+          Nothing selected yet. Open the "Variants &mdash; Clinical" tab and tick
+          a variant card, and/or open the "CNV" tab and tick a plot's "Include"
+          checkbox.
+        </div>
+
+        {# ----- Variants section ----- #}
+        <div id="reporting-variants-section" style="display:none">
+          <h5 class="mt-2 mb-2">
+            Variants <span id="reporting-variant-count-badge" class="badge bg-secondary ms-1">0</span>
+          </h5>
+          <div id="reporting-table-wrap" class="table-responsive">
+            <table class="table table-sm table-hover align-middle" id="reporting-table">
+              <thead class="table-light">
+                <tr>
+                  <th scope="col" style="width:32px"></th>
+                  <th scope="col">Gene</th>
+                  <th scope="col">Genomic variant</th>
+                  <th scope="col">Protein variant</th>
+                  <th scope="col">Transcript Variant</th>
+                  <th scope="col">COSMIC database reference</th>
+                  <th scope="col">VAF (%)</th>
+                  <th scope="col" style="width:160px">AMP/ASCO/CAP Tier (somatic)</th>
+                </tr>
+              </thead>
+              <tbody id="reporting-tbody"></tbody>
+            </table>
+          </div>
+        </div>
+
+        {# ----- CNV findings section ----- #}
+        <div id="reporting-cnv-section" class="mt-4" style="display:none">
+          <h5 class="mt-2 mb-2 d-flex justify-content-between align-items-center">
+            <span>
+              CNV findings
+              <span id="reporting-cnv-count-badge" class="badge bg-secondary ms-1">0</span>
+            </span>
+            <button type="button" id="reporting-clear-cnv-btn" class="btn btn-sm btn-outline-secondary">
+              Clear CNV selections
+            </button>
+          </h5>
+          <p class="text-muted small mb-3">
+            Each plot has an editable interpretation field that persists in
+            this browser. Use Browser &rarr; Print &rarr; Save as PDF to produce
+            a print-ready report; plots are styled to avoid page-breaks across
+            an image.
+          </p>
+          <div id="reporting-cnv-list"></div>
+        </div>
+      </div>
+
+      {# ===== Files tab ===== #}
+      <div class="tab-pane fade" id="tab-files" role="tabpanel">
+        <h4>Files</h4>
+        <p class="text-muted small">Direct links to the raw artefacts in this sample's directory.</p>
+        <ul class="list-group">
+          {% for fname, desc in ctx.files.listing %}
+            <li class="list-group-item d-flex justify-content-between align-items-center">
+              <span><a href="./{{ fname }}">{{ fname }}</a></span>
+              <span class="text-muted small">{{ desc }}</span>
+            </li>
+          {% endfor %}
+        </ul>
+      </div>
+
+    </div>
+  </main>
+</div>
+{% endblock %}
+
+{% block body_scripts %}
+<script>
+  // IGV lookup: chr:pos:ref:alt -> unique_id (built at build time from igv_report.html).
+  const igvLookup = {{ (ctx.igv.lookup if ctx.igv else {}) | tojson }};
+
+  // Optional GeneBe annotations, populated only when --annotate-genebe was used.
+  const genebeAnnotations = {{ ctx.genebe | tojson }};
+
+  // Optional OncoKB annotations, populated only when --annotate-oncokb was used.
+  const oncokbAnnotations = {{ ctx.oncokb | tojson }};
+
+  // Optional CancerVar (AMP/ASCO/CAP) annotations, populated only when
+  // --annotate-cancervar was used.
+  const cancervarAnnotations = {{ ctx.cancervar | tojson }};
+
+  // Variant data, embedded inline for client-side filtering.
+  const clinicalVariants = {{ (ctx.clinical.rows if ctx.clinical else []) | tojson }};
+  const filteredVariants = {{ (ctx.filtered.rows if ctx.filtered else []) | tojson }};
+
+  $(document).ready(function () {
+    // Initialise the per-sample reporting selection store. All keys in
+    // localStorage are namespaced by sample so opening a second sample in a
+    // new tab doesn't blend selections.
+    if (window.tspipeReporting) {
+      window.tspipeReporting.setSample({{ ctx.sample | tojson }});
+    }
+
+    // ---- Lazy-load iframes on first tab activation ----
+    // Each iframe is rendered with data-src instead of src. On the first
+    // shown.bs.tab event for a pane, we swap data-src -> src on every iframe
+    // inside that pane. This keeps the initial page load small (the IGV
+    // report alone can be 5+ MB and would block first paint otherwise).
+    document.querySelectorAll('button[data-bs-toggle="pill"]').forEach(function (btn) {
+      btn.addEventListener('shown.bs.tab', function () {
+        const targetSelector = btn.getAttribute('data-bs-target');
+        if (!targetSelector) return;
+        const pane = document.querySelector(targetSelector);
+        if (!pane) return;
+        pane.querySelectorAll('iframe[data-src]').forEach(function (iframe) {
+          iframe.src = iframe.getAttribute('data-src');
+          iframe.removeAttribute('data-src');
+        });
+      });
+    });
+
+    if (document.getElementById("clinical-browser")) {
+      initVariantBrowser({
+        containerId: "clinical-browser",
+        variants: clinicalVariants,
+        filterIds: [
+          "somaticseq_verdict", "impact", "consequence", "oncovi",
+          "gene", "vaf_min", "alt_count_buttons", "callers_buttons"
+        ],
+        igvLookup: igvLookup,
+        igvFrameId: "igv-frame",
+        igvTabSelector: '[data-bs-target="#tab-igv"]',
+        genebeAnnotations: genebeAnnotations,
+        oncokbAnnotations: oncokbAnnotations,
+        cancervarAnnotations: cancervarAnnotations,
+        enableReportSelect: true
+      });
+    }
+
+    // ---- Defer filtered-browser init until the tab is first shown ----
+    // The filtered TSV can be ~700 KB of inline JSON and produces hundreds of
+    // DOM cards. Rendering it on every page load even when the clinician
+    // doesn't open the tab is wasteful. We init once on first activation.
+    const filteredTabTrigger = document.querySelector('[data-bs-target="#tab-filtered"]');
+    if (filteredTabTrigger && document.getElementById("filtered-browser")) {
+      let filteredInited = false;
+      const initFiltered = function () {
+        if (filteredInited) return;
+        filteredInited = true;
+        initVariantBrowser({
+          containerId: "filtered-browser",
+          variants: filteredVariants,
+          filterIds: [
+            "filter_status", "somaticseq_verdict", "impact", "consequence",
+            "gene", "vaf_min", "alt_count_buttons", "callers_buttons", "pop_af_max"
+          ],
+          igvLookup: null,
+          igvFrameId: null,
+          igvTabSelector: null,
+          genebeAnnotations: {},      // filtered tab: no external annotation (large set)
+          oncokbAnnotations: {},      // ditto for OncoKB
+          cancervarAnnotations: {},   // ditto for CancerVar
+          enableReportSelect: false   // filtered tab is read-only for reporting
+        });
+      };
+      filteredTabTrigger.addEventListener('shown.bs.tab', initFiltered);
+      if (filteredTabTrigger.classList.contains('active')) initFiltered();
+    }
+
+    // ---- Reporting tab ----
+    initReportingTab();
+
+    // ---- CNV tab plot-selection gallery ----
+    initCNVGallery();
+
+    if ($('#coverage-table').length)     { $('#coverage-table').DataTable({ pageLength: 25, order: [] }); }
+    if ($('#cnv-clinical-table').length) { $('#cnv-clinical-table').DataTable({ pageLength: 25, order: [] }); }
+  });
+
+  // ---------------------------------------------------------------------------
+  // Reporting tab: render the variants table + CNV section, copy as TSV, clear.
+  // ---------------------------------------------------------------------------
+  function initReportingTab() {
+    const tbody = document.getElementById("reporting-tbody");
+    const variantsSection = document.getElementById("reporting-variants-section");
+    const cnvSection = document.getElementById("reporting-cnv-section");
+    const cnvList = document.getElementById("reporting-cnv-list");
+    const emptyState = document.getElementById("reporting-empty");
+    const copyBtn = document.getElementById("reporting-copy-btn");
+    const clearBtn = document.getElementById("reporting-clear-btn");
+    const clearCnvBtn = document.getElementById("reporting-clear-cnv-btn");
+    const tabBadge = document.getElementById("reporting-count-badge");
+    const variantCountBadge = document.getElementById("reporting-variant-count-badge");
+    const cnvCountBadge = document.getElementById("reporting-cnv-count-badge");
+    const toast = document.getElementById("reporting-copied-toast");
+    if (!tbody || !window.tspipeReporting) return;
+
+    const VARIANT_COLUMNS = [
+      "Gene", "Genomic variant", "Protein variant", "Transcript Variant",
+      "COSMIC database reference", "Variant allele frequency (%)",
+      "AMP/ASCO/CAP Tier (somatic)"
+    ];
+    const CNV_COLUMNS = ["Label", "Image path", "Interpretation"];
+
+    function escapeHtml(s) {
+      return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
+        return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+      });
+    }
+
+    function variantRowToTsv(it) {
+      const tier = window.tspipeReporting.getTier(it.id) || "";
+      const s = it.snapshot || {};
+      const vaf = s.vaf ? Number(s.vaf).toFixed(1) : "";
+      return [s.gene || "", s.hgvsG || "", s.hgvsP || "", s.hgvsC || "",
+              s.cosmic || "", vaf, tier].join("\t");
+    }
+
+    function cnvRowToTsv(it) {
+      const s = it.snapshot || {};
+      const caption = window.tspipeReporting.getCnvCaption(it.id) || "";
+      // Strip newlines from caption so it doesn't break TSV grid
+      return [(s.label || ""), (s.path || ""), caption.replace(/\s+/g, " ")].join("\t");
+    }
+
+    function renderVariants(variants) {
+      if (variants.length === 0) {
+        variantsSection.style.display = "none";
+        tbody.innerHTML = "";
+        return;
+      }
+      variantsSection.style.display = "";
+      variantCountBadge.textContent = String(variants.length);
+
+      const html = variants.map(function (it, idx) {
+        const s = it.snapshot || {};
+        const tier = escapeHtml(window.tspipeReporting.getTier(it.id) || "");
+        const vaf = s.vaf ? Number(s.vaf).toFixed(1) : "";
+        return '<tr data-vb-key="' + escapeHtml(it.id) + '">' +
+                 '<td class="text-muted small">' + (idx + 1) + '</td>' +
+                 '<td>' + escapeHtml(s.gene) + '</td>' +
+                 '<td class="font-monospace small">' + escapeHtml(s.hgvsG) + '</td>' +
+                 '<td class="font-monospace small">' + escapeHtml(s.hgvsP) + '</td>' +
+                 '<td class="font-monospace small">' + escapeHtml(s.hgvsC) + '</td>' +
+                 '<td class="font-monospace small">' + escapeHtml(s.cosmic) + '</td>' +
+                 '<td>' + escapeHtml(vaf) + '</td>' +
+                 '<td><input type="text" class="form-control form-control-sm reporting-tier-input" ' +
+                       'data-vb-key="' + escapeHtml(it.id) + '" ' +
+                       'placeholder="-" value="' + tier + '" maxlength="16"></td>' +
+               '</tr>';
+      }).join("");
+      tbody.innerHTML = html;
+    }
+
+    function renderCnvs(cnvs) {
+      if (cnvs.length === 0) {
+        cnvSection.style.display = "none";
+        cnvList.innerHTML = "";
+        return;
+      }
+      cnvSection.style.display = "";
+      cnvCountBadge.textContent = String(cnvs.length);
+
+      const html = cnvs.map(function (it, idx) {
+        const s = it.snapshot || {};
+        const caption = escapeHtml(window.tspipeReporting.getCnvCaption(it.id) || "");
+        const label = escapeHtml(s.label || it.id);
+        const path = escapeHtml(s.path || "");
+        return '<div class="vb-cnv-report-card card mb-3" data-cnv-plot-id="' + escapeHtml(it.id) + '">' +
+                 '<div class="card-header d-flex justify-content-between align-items-center py-2">' +
+                   '<span class="fw-medium">' + (idx + 1) + '. ' + label + '</span>' +
+                   '<button type="button" class="btn btn-sm btn-outline-secondary vb-cnv-remove" ' +
+                     'data-cnv-plot-id="' + escapeHtml(it.id) + '" title="Remove from report">' +
+                     "Remove</button>" +
+                 '</div>' +
+                 '<div class="card-body">' +
+                   '<a href="./' + path + '" target="_blank" rel="noopener">' +
+                     '<img src="./' + path + '" alt="' + label + '" ' +
+                          'class="img-fluid border rounded vb-cnv-report-img" ' +
+                          'style="display:block;width:100%;max-height:480px;object-fit:contain">' +
+                   "</a>" +
+                   '<label class="form-label mt-3 mb-1 small text-muted">' +
+                     "Interpretation (editable, saved automatically)" +
+                   "</label>" +
+                   '<textarea class="form-control form-control-sm vb-cnv-caption-input" ' +
+                     'data-cnv-plot-id="' + escapeHtml(it.id) + '" rows="2" ' +
+                     'placeholder="e.g. Gain at 1q21 spanning RIT1 / BRINP3 consistent with chr1q duplication">' +
+                     caption + "</textarea>" +
+                 "</div>" +
+               "</div>";
+      }).join("");
+      cnvList.innerHTML = html;
+    }
+
+    function render(items) {
+      const all = items || window.tspipeReporting.load();
+      const variants = all.filter(function (it) { return it.kind === "variant"; });
+      const cnvs = all.filter(function (it) { return it.kind === "cnv_plot"; });
+      const total = variants.length + cnvs.length;
+
+      // Tab nav badge -- combined count
+      if (tabBadge) {
+        tabBadge.textContent = String(total);
+        tabBadge.style.display = total ? "inline-block" : "none";
+      }
+
+      // Empty state vs sections
+      if (total === 0) {
+        emptyState.style.display = "";
+        variantsSection.style.display = "none";
+        cnvSection.style.display = "none";
+        copyBtn.disabled = true;
+        clearBtn.disabled = true;
+        return;
+      }
+      emptyState.style.display = "none";
+      copyBtn.disabled = false;
+      clearBtn.disabled = false;
+
+      renderVariants(variants);
+      renderCnvs(cnvs);
+    }
+
+    function buildTsv() {
+      const all = window.tspipeReporting.load();
+      const variants = all.filter(function (it) { return it.kind === "variant"; });
+      const cnvs = all.filter(function (it) { return it.kind === "cnv_plot"; });
+      const sections = [];
+      if (variants.length) {
+        sections.push("# Variants");
+        sections.push(VARIANT_COLUMNS.join("\t"));
+        variants.forEach(function (it) { sections.push(variantRowToTsv(it)); });
+      }
+      if (cnvs.length) {
+        if (sections.length) sections.push("");  // blank separator line
+        sections.push("# CNV findings");
+        sections.push(CNV_COLUMNS.join("\t"));
+        cnvs.forEach(function (it) { sections.push(cnvRowToTsv(it)); });
+      }
+      return sections.join("\n");
+    }
+
+    function showToast() {
+      if (!toast) return;
+      toast.classList.add("visible");
+      setTimeout(function () { toast.classList.remove("visible"); }, 1500);
+    }
+
+    function copyTsv() {
+      const text = buildTsv();
+      if (navigator.clipboard && window.isSecureContext) {
+        navigator.clipboard.writeText(text).then(showToast).catch(function () {
+          fallbackCopy(text); showToast();
+        });
+      } else {
+        fallbackCopy(text); showToast();
+      }
+    }
+
+    function fallbackCopy(text) {
+      const ta = document.createElement("textarea");
+      ta.value = text;
+      ta.style.position = "fixed";
+      ta.style.opacity = "0";
+      document.body.appendChild(ta);
+      ta.select();
+      try { document.execCommand("copy"); } catch (e) {}
+      document.body.removeChild(ta);
+    }
+
+    // Wire actions
+    copyBtn.addEventListener("click", copyTsv);
+    clearBtn.addEventListener("click", function () {
+      if (confirm("Clear all selections (variants + CNVs)? Tier values and CNV interpretation captions will also be cleared.")) {
+        // Wipe tier values for all selected variants
+        window.tspipeReporting.load()
+          .filter(function (it) { return it.kind === "variant"; })
+          .forEach(function (it) { window.tspipeReporting.setTier(it.id, ""); });
+        // Wipe captions for all selected CNVs
+        window.tspipeReporting.load()
+          .filter(function (it) { return it.kind === "cnv_plot"; })
+          .forEach(function (it) { window.tspipeReporting.setCnvCaption(it.id, ""); });
+        window.tspipeReporting.clearAll();
+      }
+    });
+
+    if (clearCnvBtn) {
+      clearCnvBtn.addEventListener("click", function () {
+        const cnvs = window.tspipeReporting.load()
+          .filter(function (it) { return it.kind === "cnv_plot"; });
+        if (!cnvs.length) return;
+        if (confirm("Clear " + cnvs.length + " CNV plot selection(s)? Captions will also be cleared.")) {
+          cnvs.forEach(function (it) {
+            window.tspipeReporting.setCnvCaption(it.id, "");
+            window.tspipeReporting.toggle("cnv_plot", it.id, it.snapshot);  // toggle off
+          });
+        }
+      });
+    }
+
+    // ACMG/AMP Tier inline edits -- persist on input
+    tbody.addEventListener("input", function (ev) {
+      const inp = ev.target.closest(".reporting-tier-input");
+      if (!inp) return;
+      const key = inp.getAttribute("data-vb-key");
+      window.tspipeReporting.setTier(key, inp.value.trim());
+    });
+
+    // CNV interpretation textarea edits -- persist on input
+    cnvList.addEventListener("input", function (ev) {
+      const ta = ev.target.closest(".vb-cnv-caption-input");
+      if (!ta) return;
+      const id = ta.getAttribute("data-cnv-plot-id");
+      window.tspipeReporting.setCnvCaption(id, ta.value);
+    });
+
+    // CNV "Remove" button -- toggle off the selection
+    cnvList.addEventListener("click", function (ev) {
+      const btn = ev.target.closest(".vb-cnv-remove");
+      if (!btn) return;
+      const id = btn.getAttribute("data-cnv-plot-id");
+      const item = window.tspipeReporting.load().find(function (it) {
+        return it.kind === "cnv_plot" && it.id === id;
+      });
+      if (item) {
+        window.tspipeReporting.setCnvCaption(id, "");
+        window.tspipeReporting.toggle("cnv_plot", id, item.snapshot);
+      }
+    });
+
+    // Re-render on selection change
+    window.tspipeReporting.onChange(render);
+
+    // Initial render
+    render();
+  }
+
+  // ---------------------------------------------------------------------------
+  // CNV tab gallery: wire the "Include in report" checkboxes on each plot card.
+  // ---------------------------------------------------------------------------
+  function initCNVGallery() {
+    const cnvTab = document.getElementById("tab-cnv");
+    if (!cnvTab || !window.tspipeReporting) return;
+    const countBadge = document.getElementById("cnv-selection-count-badge");
+
+    function syncCheckboxes() {
+      const selectedIds = new Set(
+        window.tspipeReporting.load()
+          .filter(function (it) { return it.kind === "cnv_plot"; })
+          .map(function (it) { return it.id; })
+      );
+      cnvTab.querySelectorAll(".vb-cnv-select").forEach(function (box) {
+        const id = box.getAttribute("data-cnv-plot-id");
+        const shouldBe = selectedIds.has(id);
+        if (box.checked !== shouldBe) box.checked = shouldBe;
+      });
+      if (countBadge) {
+        countBadge.textContent = String(selectedIds.size);
+        countBadge.style.display = selectedIds.size ? "inline-block" : "none";
+      }
+    }
+
+    cnvTab.addEventListener("change", function (ev) {
+      const box = ev.target.closest(".vb-cnv-select");
+      if (!box) return;
+      const card = box.closest(".vb-cnv-card");
+      if (!card) return;
+      const id = box.getAttribute("data-cnv-plot-id");
+      const path = card.getAttribute("data-cnv-path") || "";
+      const label = card.getAttribute("data-cnv-label") || id;
+      window.tspipeReporting.toggle("cnv_plot", id, { path: path, label: label });
+    });
+
+    // Keep gallery checkboxes in sync with the store, e.g. when the Reporting
+    // tab's "Clear CNV selections" or "Remove" buttons toggle items off.
+    window.tspipeReporting.onChange(syncCheckboxes);
+
+    // Initial sync (handles page reload with prior selections)
+    syncCheckboxes();
+  }
+
+</script>
+{% endblock %}

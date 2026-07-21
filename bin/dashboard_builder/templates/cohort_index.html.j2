@@ -1,0 +1,71 @@
+{% extends "base.html.j2" %}
+
+{% block title %}Run {{ ctx.run_name }} — Cohort Index{% endblock %}
+
+{% block body %}
+<div class="container-fluid py-3 px-4">
+  <div class="d-flex align-items-center justify-content-between mb-3 flex-wrap gap-2">
+    <div>
+      <h3 class="mb-0">Run {{ ctx.run_name }}</h3>
+      <div class="text-muted small">{{ ctx.samples | length }} sample(s) &middot; generated {{ ctx.build_time }}</div>
+    </div>
+    <span class="badge bg-secondary fs-6">Targeted-Seq Pipeline</span>
+  </div>
+
+  <div class="table-responsive">
+    <table id="cohort-table" class="table table-sm table-striped table-hover w-100">
+      <thead>
+        <tr>
+          <th>Sample</th>
+          <th>Mean cov</th>
+          <th>% &ge; 100x</th>
+          <th>Fold-80</th>
+          <th>% dup</th>
+          <th># clinical variants</th>
+          <th>FLT3-ITD</th>
+          <th>QC</th>
+          <th>Report</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for s in ctx.samples %}
+          {% set m = s.hsmetrics.metrics if s.hsmetrics else {} %}
+          {% set csum = s.coverage.summary if s.coverage and s.coverage.summary else None %}
+          <tr>
+            <td><a href="./{{ s.sample }}/{{ ctx.report_subdir }}{{ s.sample }}_report.html">{{ s.sample }}</a></td>
+            <td>{{ csum.mean_of_per_exon_means | format_num(0) if csum else (m.MEAN_TARGET_COVERAGE | format_num(0) if m.get('MEAN_TARGET_COVERAGE') is not none else '') }}</td>
+            <td>{{ (m.PCT_TARGET_BASES_100X * 100) | format_num(1) if m.get('PCT_TARGET_BASES_100X') is not none else '' }}</td>
+            <td>{{ m.FOLD_80_BASE_PENALTY | format_num(2) if m.get('FOLD_80_BASE_PENALTY') is not none else '' }}</td>
+            <td>{{ (m.PCT_EXC_DUPE * 100) | format_num(1) if m.get('PCT_EXC_DUPE') is not none else '' }}</td>
+            <td>{{ s.clinical.n if s.clinical else '' }}</td>
+            <td>
+              {%- if s.flt3 and s.flt3.n_positive > 0 -%}
+                <span class="badge bg-warning text-dark">Detected ({{ s.flt3.n_positive }})</span>
+              {%- elif s.flt3 -%}
+                <span class="text-muted">Not detected</span>
+              {%- else -%}
+                <span class="text-muted">&mdash;</span>
+              {%- endif -%}
+            </td>
+            <td><span class="badge qc-pill-pending">Pending</span></td>
+            <td><a href="./{{ s.sample }}/{{ ctx.report_subdir }}{{ s.sample }}_report.html" class="btn btn-sm btn-outline-primary">Open &rarr;</a></td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}
+
+{% block body_scripts %}
+<script>
+  $(document).ready(function () {
+    $('#cohort-table').DataTable({
+      pageLength: 50,
+      order: [[0, 'asc']],
+      dom: 'Bfrtip',
+      buttons: [{ extend: 'colvis', text: 'Columns', className: 'btn-sm btn-outline-secondary' }]
+    });
+  });
+</script>
+{% endblock %}
