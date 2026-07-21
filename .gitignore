@@ -75,3 +75,7 @@ results_hg38_only/
 test_one.csv
 test_*.csv
 credentials.config
+
+# patch backups — never track
+*.bak
+*.bak_*
