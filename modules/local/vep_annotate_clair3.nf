@@ -32,19 +32,22 @@ process VEP_ANNOTATE_CLAIR3 {
     bcftools view -f PASS --threads ${params.vep_threads} \\
         -O z -o "\$pass_vcf" ${clair3_vcf}
     tabix -p vcf -f "\$pass_vcf"
+    norm_vcf=vep_out/${meta.id}.norm.vcf.gz
+    bcftools norm -m- -f ${params.hg38_fasta} "\$pass_vcf" -O z -o "\$norm_vcf"
+    tabix -p vcf -f "\$norm_vcf"
     n_pass=\$(bcftools view -H "\$pass_vcf" | wc -l)
     echo "[stage 1] PASS variants: \$n_pass"
 
     if [ "\$n_pass" -eq 0 ]; then
         echo "No PASS variants — emitting empty TSVs and exiting."
-        printf "chrom\\tpos\\tref\\talt\\tqual\\tvariant_type\\tgene\\ttranscript\\tbiotype\\tcanonical\\tconsequence\\timpact\\texon\\tdomains\\trs_id\\tpop_af_max\\tpop_af_max_source\\tclinvar_sig\\ttumor_af\\tREF_COUNT\\tALT_COUNT\\tDP\\n" > "\$all_tsv"
+        printf "chrom\\tpos\\tref\\talt\\tqual\\tvariant_type\\tgene\\ttranscript\\tbiotype\\tcanonical\\tconsequence\\timpact\\texon\\tdomains\\trs_id\\tpop_af_max\\tpop_af_max_source\\tclinvar_sig\\ttumor_af\\tREF_COUNT\\tALT_COUNT\\tDP\\thgvsc\\thgvsp\\n" > "\$all_tsv"
         cp "\$all_tsv" "\$cand_tsv"
         echo '"${task.process}": no-variants' > versions.yml
         exit 0
     fi
 
     # ----- Stage 2: VEP annotation via docker -----
-    # NO --hgvs / --hgvsg (multi-allelic crash workaround per step 12b)
+    # --hgvs enabled; multi-allelics split by bcftools norm -m- above  [hgvs-annotation-applied-v2]
     docker run --rm \\
         --user \$(id -u):\$(id -g) \\
         -v /goast:/goast \\
@@ -53,7 +56,7 @@ process VEP_ANNOTATE_CLAIR3 {
         -w /work \\
         ${params.vep_image} \\
         vep \\
-            --input_file "\$pass_vcf" \\
+            --input_file "\$norm_vcf" \\
             --output_file "\$ann_vcf" \\
             --vcf \\
             --compress_output bgzip \\
@@ -66,6 +69,7 @@ process VEP_ANNOTATE_CLAIR3 {
             --offline \\
             --fasta ${params.hg38_fasta} \\
             --use_given_ref \\
+            --hgvs \
             --pick \\
             --symbol --canonical --biotype --numbers --domains \\
             --check_existing \\
@@ -80,10 +84,11 @@ process VEP_ANNOTATE_CLAIR3 {
     echo "[stage 2] VEP done"
 
     # ----- Stage 3: tidy TSV via bcftools +split-vep -----
+    export BCFTOOLS_PLUGINS=${CONDA_PREFIX}/libexec/bcftools
     bcftools +split-vep \\
         "\$ann_vcf" \\
         -d \\
-        -f '%CHROM\\t%POS\\t%REF\\t%ALT\\t%QUAL\\t%SYMBOL\\t%Feature\\t%BIOTYPE\\t%CANONICAL\\t%Consequence\\t%IMPACT\\t%EXON\\t%DOMAINS\\t%Existing_variation\\t%MAX_AF\\t%MAX_AF_POPS\\t%CLIN_SIG\\t[%AF]\\t[%AD]\\t[%DP]\\n' \\
+        -f '%CHROM\\t%POS\\t%REF\\t%ALT\\t%QUAL\\t%SYMBOL\\t%Feature\\t%BIOTYPE\\t%CANONICAL\\t%Consequence\\t%IMPACT\\t%EXON\\t%DOMAINS\\t%Existing_variation\\t%MAX_AF\\t%MAX_AF_POPS\\t%CLIN_SIG\\t[%AF]\\t[%AD]\\t[%DP]\\t%HGVSc\\t%HGVSp\\n' \\
         -A tab \\
     | awk -v FS='\\t' -v OFS='\\t' '
         {
@@ -91,12 +96,12 @@ process VEP_ANNOTATE_CLAIR3 {
             ad=\$19; dp=\$20; rc="-1"; ac="-1"
             if (ad != "" && ad != ".") { n=split(ad, a, ","); if (a[1] != "") rc=a[1]; if (n>=2 && a[2] != "") ac=a[2] }
             if (dp=="" || dp==".") dp="-1"
-            print \$1, \$2, \$3, \$4, \$5, vtype, \$6, \$7, \$8, \$9, \$10, \$11, \$12, \$13, \$14, \$15, \$16, \$17, \$18, rc, ac, dp
+            print \$1, \$2, \$3, \$4, \$5, vtype, \$6, \$7, \$8, \$9, \$10, \$11, \$12, \$13, \$14, \$15, \$16, \$17, \$18, rc, ac, dp, \$21, \$22
         }
         ' > "\${all_tsv}.body"
 
     {
-        printf "chrom\\tpos\\tref\\talt\\tqual\\tvariant_type\\tgene\\ttranscript\\tbiotype\\tcanonical\\tconsequence\\timpact\\texon\\tdomains\\trs_id\\tpop_af_max\\tpop_af_max_source\\tclinvar_sig\\ttumor_af\\tREF_COUNT\\tALT_COUNT\\tDP\\n"
+        printf "chrom\\tpos\\tref\\talt\\tqual\\tvariant_type\\tgene\\ttranscript\\tbiotype\\tcanonical\\tconsequence\\timpact\\texon\\tdomains\\trs_id\\tpop_af_max\\tpop_af_max_source\\tclinvar_sig\\ttumor_af\\tREF_COUNT\\tALT_COUNT\\tDP\\thgvsc\\thgvsp\\n"
         cat "\${all_tsv}.body"
     } > "\$all_tsv"
     rm -f "\${all_tsv}.body"

@@ -169,7 +169,7 @@ Total: 24.16 Mb across 38 regions (0.776% of T2T-CHM13v2.0 genome).
 
 | Version | Size | Regions | % genome | Key change |
 |---|---|---|---|---|
-| v3 | 24.24 Mb | 23 | 0.782% | T2T migration + BCR expansion; recovered all 3 FISH+ translocations from prior run |
+| v3 | 24.24 Mb | 23 | 0.782% | T2T migration + BCR expansion |
 | v4 | 22.17 Mb | 19 | 0.711% | Removed lymphoma/Waldenström regions; added WWOX/IRF4/XBP1; expanded TP53 ±1 Mb |
 | v5 | 23.94 Mb | 28 | 0.768% | Lab-driven additions of 9 documented IGH partners (Tier 1+2+3); Tier 4 novel partners excluded |
 | **v6** | **24.16 Mb** | **38** | **0.776%** | **Added 10 top-mutated MM driver genes (DIS3, TRAF3, PRDM1, ATM, CYLD, H1-4, MAX, EGR1, LTB, ATR); trimmed TP53 from ±1 Mb to ±500 kb; retired CN-LOH at 17p as an analytical target** |

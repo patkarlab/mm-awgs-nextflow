@@ -20,6 +20,7 @@ process FILTER_V6_REPORT {
     def include_ig = params.v6_include_ig ? '--include-ig' : ''
     """
     filter_v6_somatic_candidates.py \\
+        --panel-bed ${params.panel_bed_hg38} \\
         --input ${candidates_tsv} \\
         --outdir v6_filtered \\
         --max-pop-af ${params.v6_max_pop_af} \\

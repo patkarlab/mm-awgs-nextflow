@@ -102,11 +102,10 @@ These layer on as v0.2 and v0.3.
 
 ## Validation history
 
-The bash pipeline this Nextflow port is based on has been validated against
-FISH on a 3-sample cohort: 3/3 known IGH translocations recovered (one
-t(11;14) 95%, one t(11;14) 50%, one t(4;14) 90%). Validation of the
-Nextflow port against the bash output bit-for-bit is the next session's
-work, not yet done.
+The bash pipeline this Nextflow port is based on was validated against
+orthogonal clinical assays; cohort-level validation details are maintained
+outside this repository. Bit-for-bit validation of the Nextflow port against
+the bash output is pending.
 
 ## Panel design
 

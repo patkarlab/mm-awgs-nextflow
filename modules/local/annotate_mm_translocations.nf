@@ -14,6 +14,7 @@ process ANNOTATE_MM_TRANSLOCATIONS {
     annotate_mm_translocations.py \\
         --vcf ${merged_vcf} \\
         --panel-bed ${params.panel_bed_t2t} \\
+        --cytoband-bed ${params.cytoband_bed_t2t} \\
         --dictionary ${params.mm_translocation_dict} \\
         --sample ${meta.id} \\
         --output ${meta.id}.mm_annotated.tsv

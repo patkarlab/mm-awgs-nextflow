@@ -74,3 +74,4 @@ results_t2t_only/
 results_hg38_only/
 test_one.csv
 test_*.csv
+credentials.config

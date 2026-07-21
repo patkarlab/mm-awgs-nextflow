@@ -21,7 +21,7 @@
 #   compare_hg38_outputs.sh <sample_id> <bash_root> <nextflow_root>
 #
 # Example:
-#   compare_hg38_outputs.sh 11F202612108_18h \
+#   compare_hg38_outputs.sh SAMPLE_ID \
 #       /goast/nikhil_awgs_testing \
 #       /goast/mm-awgs-nextflow/results_hg38_only
 #

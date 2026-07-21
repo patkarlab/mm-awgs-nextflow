@@ -9,6 +9,18 @@ apart. Two TRA rows are united when, after orientation normalisation, they share
 the same chromosome pair AND BOTH breakpoints lie within --max-dist bp
 (default 100). Non-TRA rows pass through unchanged.
 
+Ig-aware second pass (added): immunoglobulin-partner translocations are special.
+The Ig locus (IGH/IGK/IGL) is large (IGH ~1.5 Mb) and the Ig-side breakpoint of
+the *same* event lands at different J/switch positions across callers, so two
+genuine FGFR3::IGH calls have Ig-side coordinates far more than --max-dist apart
+and never collapse under the positional rule - producing many redundant rows.
+The second pass therefore collapses any partner::Ig translocations that share
+the same unordered gene pair and a partner-side breakpoint within
+--ig-partner-tol bp (default 1000), treating the whole Ig locus as one anchor
+and ignoring the Ig-side coordinate. Non-Ig::non-Ig pairs keep the positional
+rule unchanged. Ig loci are detected by gene-symbol prefix, so this is
+reference-agnostic.
+
 Standard-library only; runs in any python3 (incl. awgs_sv).
 
 Merge semantics per cluster:
@@ -22,14 +34,15 @@ Merge semantics per cluster:
   - filter = PASS if any member is PASS;
   - two columns added: n_merged, merged_sv_ids.
 
-Single-linkage clustering (transitive) is used; at 100 bp clusters are tiny so
-chaining is not a concern.
+Single-linkage clustering (transitive) is used; clusters stay small so chaining
+is not a concern.
 
 Usage:
   python3 merge_translocations.py --input <sample>.mm_annotated.tsv [...] \
-      [--outdir DIR] [--max-dist 100]
+      [--outdir DIR] [--max-dist 100] [--ig-partner-tol 1000] [--keep-all-sv]
 """
 
+# [cytoband-partner-annotation applied]
 import argparse
 import csv
 import os
@@ -52,11 +65,26 @@ def to_int(value, default=None):
         return default
 
 
+def is_dispersed_anchor(gene):
+    """True if the gene is a dispersed-breakpoint translocation anchor: an
+    immunoglobulin locus (IGH/IGK/IGL, incl. @-suffixed or _locus forms) or MYC.
+    These loci carry the same event's breakpoint at scattered positions across a
+    wide region, so redundant calls must be collapsed on the *partner* side
+    rather than by requiring both breakpoints to coincide. Reference-agnostic;
+    keyed on gene symbol so it is independent of coordinates/assembly."""
+    g = (gene or "").strip().upper().rstrip("@")
+    if g == "MYC":
+        return True
+    return g.startswith("IGH") or g.startswith("IGK") or g.startswith("IGL")
+
+
 def canonical_ends(row):
     """Return ((chromA,posA,geneA),(chromB,posB,geneB)) chrom-sorted so that
     reciprocal mates normalise identically."""
-    a = (row["chrom_a"], to_int(row["pos_a"], 0), row.get("gene_a", ""))
-    b = (row["chrom_b"], to_int(row["pos_b"], 0), row.get("gene_b", ""))
+    a = (row["chrom_a"], to_int(row["pos_a"], 0), row.get("gene_a", ""),
+         (row.get("gene_a_source", "") or "coordinate"))
+    b = (row["chrom_b"], to_int(row["pos_b"], 0), row.get("gene_b", ""),
+         (row.get("gene_b_source", "") or "coordinate"))
     ka = (chrom_sort_key(a[0]), a[1])
     kb = (chrom_sort_key(b[0]), b[1])
     return (a, b) if ka <= kb else (b, a)
@@ -67,16 +95,37 @@ def callers_set(row):
     return {c.strip() for c in raw.split(",") if c.strip()}
 
 
+_SOURCE_RANK = {"panel": 0, "cytoband": 1, "coordinate": 2}
+
+
+def best_end(members, end_index):
+    """Pick the best (gene, source) for end 0 or 1 across clustered members.
+
+    Prefers the strongest provenance (panel > cytoband > coordinate). This
+    replaces the old string test against "OFF_PANEL": off-panel partners are
+    now labelled by cytoband, so the merge must rank on the provenance token
+    rather than a magic gene name. Ties are broken by taking the end from the
+    representative member (most callers / most support), so an adjacent-band
+    disagreement resolves to the highest-support call rather than input order.
+    """
+    best = None
+    best_rank = None
+    ranked = sorted(members, key=_rep_key, reverse=True)
+    for m in ranked:
+        end = m["_ends"][end_index]
+        gene = end[2].strip()
+        source = (end[3] if len(end) > 3 else "coordinate").strip() or "coordinate"
+        if not gene:
+            continue
+        rank = _SOURCE_RANK.get(source, 3)
+        if best is None or rank < best_rank:
+            best, best_rank = (gene, source), rank
+    return best if best is not None else ("", "coordinate")
+
+
 def best_gene(members, end_index):
-    """Pick a gene for end 0 or 1: prefer a non-empty, non-OFF_PANEL value."""
-    fallback = ""
-    for m in members:
-        g = m["_ends"][end_index][2].strip()
-        if g and g != "OFF_PANEL":
-            return g
-        if g and not fallback:
-            fallback = g
-    return fallback
+    """Backwards-compatible shim: return only the gene label."""
+    return best_end(members, end_index)[0]
 
 
 def first_nonempty(members, col):
@@ -87,12 +136,13 @@ def first_nonempty(members, col):
     return ""
 
 
+def _rep_key(m):
+    return (to_int(m.get("n_callers"), 0), to_int(m.get("support_reads"), 0))
+
+
 def merge_cluster(members):
     # representative: most callers, then most support_reads, then first.
-    def rep_key(m):
-        return (to_int(m.get("n_callers"), 0),
-                to_int(m.get("support_reads"), 0))
-    rep = max(members, key=rep_key)
+    rep = max(members, key=_rep_key)
 
     end1, end2 = rep["_ends"]
     callers = set()
@@ -122,8 +172,12 @@ def merge_cluster(members):
         "sv_id": rep.get("sv_id", ""),
         "sv_type": "TRA",
         "filter": filt,
-        "chrom_a": end1[0], "pos_a": str(end1[1]), "gene_a": best_gene(members, 0),
-        "chrom_b": end2[0], "pos_b": str(end2[1]), "gene_b": best_gene(members, 1),
+        "chrom_a": end1[0], "pos_a": str(end1[1]),
+        "gene_a": best_end(members, 0)[0],
+        "gene_a_source": best_end(members, 0)[1],
+        "chrom_b": end2[0], "pos_b": str(end2[1]),
+        "gene_b": best_end(members, 1)[0],
+        "gene_b_source": best_end(members, 1)[1],
         "known_mm_pair": first_nonempty(members, "known_mm_pair"),
         "known_freq": first_nonempty(members, "known_freq"),
         "callers": ",".join(callers_sorted),
@@ -164,11 +218,68 @@ def cluster_tra(tra_rows, max_dist):
     clusters = {}
     for i in range(n):
         clusters.setdefault(find(i), []).append(tra_rows[i])
-    # return clusters keyed by the smallest original index (preserve order)
     return clusters
 
 
-def process_file(path, outdir, max_dist, keep_all_sv):
+def ig_aware_union(clusters, ig_partner_tol):
+    """Second pass over positional clusters: collapse partner::anchor translocations
+    whose anchor-side breakpoints are scattered across a dispersed anchor (Ig
+    locus or MYC).
+
+    The anchor side is identified by is_dispersed_anchor (IGH/IGK/IGL or MYC).
+    Eligible clusters are those with exactly one anchor end. They are grouped by
+    (Ig-side chromosome, partner chromosome) and then single-linkage clustered on
+    the *partner* breakpoint position: two clusters merge if their partner
+    positions are within --ig-partner-tol bp. Partner gene name is NOT used, so
+    off-panel/unnamed partners (e.g. OFF_PANEL::MYC, IGH_locus::OFF_PANEL) still
+    collapse on position. The Ig-side coordinate is ignored entirely. Clusters
+    that are not partner::Ig (both Ig, or neither) are left exactly as the
+    positional pass produced them.
+
+    Returns a new clusters-style dict (values are member lists)."""
+    cluster_list = list(clusters.values())
+    n = len(cluster_list)
+    parent = list(range(n))
+
+    def find(x):
+        while parent[x] != x:
+            parent[x] = parent[parent[x]]
+            x = parent[x]
+        return x
+
+    def union(x, y):
+        parent[find(x)] = find(y)
+
+    tol = max(1, ig_partner_tol)
+
+    # Collect eligible clusters with their partner anchor (ig_chrom, partner_chrom, partner_pos).
+    groups = {}
+    for ci, members in enumerate(cluster_list):
+        rep = max(members, key=_rep_key)
+        (ca, pa, ga, _), (cb, pb, gb, _) = rep["_ends"]
+        a_ig, b_ig = is_dispersed_anchor(ga), is_dispersed_anchor(gb)
+        if a_ig == b_ig:                       # both Ig or neither -> leave alone
+            continue
+        if a_ig:
+            ig_c, partner_c, partner_p = ca, cb, pb
+        else:
+            ig_c, partner_c, partner_p = cb, ca, pa
+        groups.setdefault((ig_c, partner_c), []).append((partner_p, ci))
+
+    # Single-linkage on partner position within each (ig_chrom, partner_chrom) group.
+    for members in groups.values():
+        members.sort()
+        for k in range(1, len(members)):
+            if members[k][0] - members[k - 1][0] <= tol:
+                union(members[k][1], members[k - 1][1])
+
+    merged = {}
+    for ci in range(n):
+        merged.setdefault(find(ci), []).extend(cluster_list[ci])
+    return merged
+
+
+def process_file(path, outdir, max_dist, keep_all_sv, ig_partner_tol):
     stem = os.path.basename(path)
     # default: translocations-only file; --keep-all-sv: full table w/ TRA merged
     suffix = ".sv_tra_merged.tsv" if keep_all_sv else ".translocations.tsv"
@@ -197,14 +308,14 @@ def process_file(path, outdir, max_dist, keep_all_sv):
 
     tra_rows = [rows[i] for i in tra_idx]
     clusters = cluster_tra(tra_rows, max_dist)
+    clusters = ig_aware_union(clusters, ig_partner_tol)
 
     # Map each TRA row's original position -> its cluster's representative output,
     # emitted once at the earliest member position.
-    # Build cluster member lists keyed by min original index.
     pos_of = {id(r): tra_idx[k] for k, r in enumerate(tra_rows)}
     merged_by_first = {}
     member_first = {}
-    for _, members in clusters.items():
+    for members in clusters.values():
         first_pos = min(pos_of[id(m)] for m in members)
         merged_by_first[first_pos] = merge_cluster(members)
         for m in members:
@@ -244,14 +355,17 @@ def main():
     ap = argparse.ArgumentParser(description="Unite near-identical translocation calls in mm_annotated.tsv.")
     ap.add_argument("-i", "--input", required=True, nargs="+", help="One or more *.mm_annotated.tsv files.")
     ap.add_argument("-o", "--outdir", default=None, help="Output dir (default: alongside each input).")
-    ap.add_argument("--max-dist", type=int, default=100, help="Max bp between breakpoints to unite (default 100).")
+    ap.add_argument("--max-dist", type=int, default=100, help="Max bp between breakpoints to unite non-Ig pairs (default 100).")
+    ap.add_argument("--ig-partner-tol", type=int, default=2000,
+                    help="bp tolerance on the partner side when collapsing partner::Ig "
+                         "translocations across the Ig locus (default 1000).")
     ap.add_argument("--keep-all-sv", action="store_true", help="Keep all SV types in output (TRA merged, others passthrough). Default: translocations only.")
     args = ap.parse_args()
     for path in args.input:
         if not os.path.isfile(path):
             sys.stderr.write(f"ERROR: not found: {path}\n"); sys.exit(1)
         outdir = args.outdir or os.path.dirname(os.path.abspath(path))
-        process_file(path, outdir, args.max_dist, args.keep_all_sv)
+        process_file(path, outdir, args.max_dist, args.keep_all_sv, args.ig_partner_tol)
 
 
 if __name__ == "__main__":

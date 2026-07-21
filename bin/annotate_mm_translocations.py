@@ -24,8 +24,8 @@ Usage:
       --vcf merged.vcf.gz \\
       --panel-bed aWGS_MMfocused_v6_t2t_chr.bed \\
       --dictionary mm_translocation_dictionary.tsv \\
-      --sample 11F20262905 \\
-      --output 11F20262905.mm_annotated.tsv
+      --sample SAMPLE_ID \\
+      --output SAMPLE_ID.mm_annotated.tsv
 """
 
 from __future__ import annotations
@@ -38,7 +38,9 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 
-__version__ = "0.1.0"
+__version__ = "0.3.0"
+# [dictionary-token-matching applied]
+# [cytoband-partner-annotation applied]
 
 
 @dataclass
@@ -82,25 +84,57 @@ def load_panel(bed_path: Path) -> List[PanelRegion]:
     return out
 
 
-def load_dictionary(dict_path: Path) -> Dict[Tuple[str, str], Dict[str, str]]:
+# Region-suffix words that are not gene symbols (e.g. the "locus" in
+# "IGH_locus"). Dropped during tokenization so IGH_locus and IGH match.
+_PARTNER_SUFFIX_TOKENS = {"LOCUS"}
+
+
+def _norm_tokens(name: str) -> frozenset:
+    """Reduce a partner label to a set of normalized gene tokens.
+
+    Splits on '/' and '_' (and '+'), uppercases, and drops region-suffix
+    words. E.g. 'IGH_locus' -> {IGH}; 'FGFR3/NSD2' -> {FGFR3, NSD2};
+    'IGL/IGLL5' -> {IGL, IGLL5}. Two partners are considered the same locus
+    when their token sets intersect.
     """
-    Load the MM translocation dictionary, keyed by unordered (a, b) pair
-    of uppercase symbols. Missing dictionary file is non-fatal.
+    raw = str(name).strip().upper().replace("+", "/").replace("_", "/")
+    return frozenset(t for t in raw.split("/")
+                     if t and t not in _PARTNER_SUFFIX_TOKENS)
+
+
+def load_dictionary(dict_path):
     """
-    out: Dict[Tuple[str, str], Dict[str, str]] = {}
+    Load the MM translocation dictionary as a list of
+    (tokset_a, tokset_b, row) entries. Partner names are reduced to gene
+    token sets (see _norm_tokens) so lookup matches on gene identity rather
+    than exact label. Missing dictionary file is non-fatal (empty list).
+    """
+    out = []
     if not dict_path.exists():
         return out
     with open(dict_path) as fh:
         header = fh.readline().rstrip("\n").split("\t")
         for line in fh:
             row = dict(zip(header, line.rstrip("\n").split("\t")))
-            a = (row.get("partner_a") or "").strip().upper()
-            b = (row.get("partner_b") or "").strip().upper()
+            a = (row.get("partner_a") or "").strip()
+            b = (row.get("partner_b") or "").strip()
             if not a or not b:
                 continue
-            key = tuple(sorted([a, b]))
-            out[key] = row
+            out.append((_norm_tokens(a), _norm_tokens(b), row))
     return out
+
+
+def dictionary_lookup(dictionary, gene_a, gene_b):
+    """Return the dictionary row for an unordered gene-a / gene-b pair, or
+    None. Matches when the pair's token sets intersect the entry's token
+    sets on both sides (in either orientation)."""
+    ta, tb = _norm_tokens(gene_a), _norm_tokens(gene_b)
+    if not ta or not tb:
+        return None
+    for da, db, row in dictionary:
+        if (ta & da and tb & db) or (ta & db and tb & da):
+            return row
+    return None
 
 
 def parse_info(info_field: str) -> Dict[str, str]:
@@ -235,6 +269,71 @@ def parse_vcf(vcf_path: Path) -> List[SvRecord]:
     return out
 
 
+
+@dataclass
+class CytobandTable:
+    """Cytoband lookup for T2T-CHM13v2.0. Bands tile each chromosome
+    contiguously, so any in-range coordinate resolves to exactly one band."""
+    # {chrom: [(start, end, band), ...] sorted by start}
+    bands: Dict[str, List[Tuple[int, int, str]]]
+
+    def band_for(self, chrom: Optional[str], pos: Optional[int]) -> Optional[str]:
+        if chrom is None or pos is None:
+            return None
+        arr = self.bands.get(chrom)
+        if not arr:
+            return None
+        # Linear scan is fine: <= ~60 bands per chromosome.
+        for start, end, name in arr:
+            if start <= pos < end:
+                return name
+        return None
+
+
+def load_cytobands(bed_path: Path) -> CytobandTable:
+    """Load a 5-column UCSC cytoband BED (chrom start end band gieStain).
+    Only the first four columns are used."""
+    bands: Dict[str, List[Tuple[int, int, str]]] = {}
+    with open(bed_path) as fh:
+        for line in fh:
+            line = line.rstrip("\n")
+            if not line or line.startswith("#") or line.startswith("track"):
+                continue
+            parts = line.split("\t")
+            if len(parts) < 4:
+                continue
+            chrom, start, end, band = parts[0], int(parts[1]), int(parts[2]), parts[3]
+            bands.setdefault(chrom, []).append((start, end, band))
+    for chrom in bands:
+        bands[chrom].sort(key=lambda t: t[0])
+    if not bands:
+        sys.stderr.write(f"ERROR: no cytobands parsed from {bed_path}\n")
+        sys.exit(1)
+    return CytobandTable(bands)
+
+
+def _strip_chr(chrom: str) -> str:
+    """chr8 -> 8, chrX -> X, for clinical band notation (8q24.21)."""
+    return chrom[3:] if chrom.startswith("chr") else chrom
+
+
+def characterize_side(chrom, pos, region, cytobands):
+    """Return (label, source) for one breakpoint side.
+
+    panel region      -> (region.name, "panel")
+    else band found   -> ("8q24.21",   "cytoband")
+    else (defensive)  -> ("chr8:127.0Mb", "coordinate")
+    """
+    if region is not None:
+        return region.name, "panel"
+    band = cytobands.band_for(chrom, pos)
+    if band is not None:
+        return f"{_strip_chr(chrom)}{band}", "cytoband"
+    if chrom is not None and pos is not None:
+        return f"{chrom}:{pos / 1e6:.1f}Mb", "coordinate"
+    return "OFF_PANEL", "coordinate"
+
+
 def region_for(chrom: Optional[str], pos: Optional[int], panel: List[PanelRegion]) -> Optional[PanelRegion]:
     if chrom is None or pos is None:
         return None
@@ -244,7 +343,7 @@ def region_for(chrom: Optional[str], pos: Optional[int], panel: List[PanelRegion
     return None
 
 
-def annotate(records, panel, dictionary, sample):
+def annotate(records, panel, dictionary, sample, cytobands):
     out = []
     for r in records:
         side_a = region_for(r.chrom, r.pos, panel)
@@ -252,14 +351,13 @@ def annotate(records, panel, dictionary, sample):
         if side_a is None and side_b is None:
             continue
 
-        gene_a = side_a.name if side_a else "OFF_PANEL"
-        gene_b = side_b.name if side_b else "OFF_PANEL"
+        gene_a, gene_a_source = characterize_side(r.chrom, r.pos, side_a, cytobands)
+        gene_b, gene_b_source = characterize_side(r.mate_chrom, r.mate_pos, side_b, cytobands)
 
         known = ""
         freq = ""
-        if side_a and side_b:
-            key = tuple(sorted([gene_a.upper(), gene_b.upper()]))
-            hit = dictionary.get(key)
+        if side_a and side_b and gene_a_source == "panel" and gene_b_source == "panel":
+            hit = dictionary_lookup(dictionary, gene_a, gene_b)
             if hit:
                 known = hit.get("name", "yes")
                 freq = hit.get("frequency", "")
@@ -275,6 +373,8 @@ def annotate(records, panel, dictionary, sample):
             "chrom_b":        r.mate_chrom or "",
             "pos_b":          str(r.mate_pos) if r.mate_pos is not None else "",
             "gene_b":         gene_b,
+            "gene_a_source":  gene_a_source,
+            "gene_b_source":  gene_b_source,
             "known_mm_pair":  known,
             "known_freq":     freq,
             "callers":        ",".join(r.callers) or "unknown",
@@ -291,6 +391,9 @@ def main() -> int:
     ap.add_argument("--vcf",         required=True, type=Path)
     ap.add_argument("--panel-bed",   required=True, type=Path)
     ap.add_argument("--dictionary",  required=True, type=Path)
+    ap.add_argument("--cytoband-bed", required=True, type=Path,
+                    help="T2T-CHM13v2.0 cytoband BED (chrom start end band ...). "
+                         "Off-panel breakpoint partners are characterized by band.")
     ap.add_argument("--sample",      required=True, type=str)
     ap.add_argument("--output",      required=True, type=Path)
     ap.add_argument("--version",     action="version", version=f"%(prog)s {__version__}")
@@ -299,12 +402,14 @@ def main() -> int:
     panel = load_panel(args.panel_bed)
     dictionary = load_dictionary(args.dictionary)
     records = parse_vcf(args.vcf)
-    rows = annotate(records, panel, dictionary, args.sample)
+    cytobands = load_cytobands(args.cytoband_bed)
+    rows = annotate(records, panel, dictionary, args.sample, cytobands)
 
     columns = [
         "sample", "sv_id", "sv_type", "filter",
         "chrom_a", "pos_a", "gene_a",
         "chrom_b", "pos_b", "gene_b",
+        "gene_a_source", "gene_b_source",
         "known_mm_pair", "known_freq",
         "callers", "n_callers", "supp_vec", "support_reads",
     ]

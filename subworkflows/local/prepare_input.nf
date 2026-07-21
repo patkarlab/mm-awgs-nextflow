@@ -4,7 +4,7 @@
  * Reads the sample sheet CSV and emits a channel of [meta, minknow_input].
  *
  * Expected sample sheet columns (header row required):
- *   sample_id      Canonical sequencing ID (e.g. 11F20262905). No PHI.
+ *   sample_id      Canonical sequencing ID (e.g. SAMPLE_ID). No PHI.
  *   minknow_bam    Path to the sample's P2i output. This may be either:
  *                    - a FOLDER of per-chunk MinKNOW BAMs (real P2i output;
  *                      one BAM per ~1.5 h, NC_-named, T2T-aligned), OR

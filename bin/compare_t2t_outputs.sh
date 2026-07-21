@@ -17,7 +17,7 @@
 #   bin/compare_t2t_outputs.sh <sample_id> <bash_root> <nf_root>
 #
 # Example after the first single-sample Nextflow run:
-#   bin/compare_t2t_outputs.sh 11F202612108 \
+#   bin/compare_t2t_outputs.sh SAMPLE_ID \
 #       /goast/nikhil_awgs_testing \
 #       /goast/nikhil_awgs_testing/mm-awgs-nextflow/results_t2t_only
 #
@@ -34,7 +34,7 @@ if [ $# -lt 3 ]; then
     cat >&2 <<EOF
 Usage: $0 <sample_id> <bash_root> <nf_root>
 
-  sample_id   E.g. 11F202612108
+  sample_id   E.g. SAMPLE_ID
   bash_root   Root containing t2t/calls/{sniffles,cutesv,severus,merged}/
               For production, this is /goast/nikhil_awgs_testing
   nf_root     Root containing t2t/calls/{sniffles,cutesv,severus,merged}/
@@ -388,5 +388,5 @@ echo "  - PASS counts per caller match exactly."
 echo "  - SUPP_VEC histogram pattern proportions match (small absolute"
 echo "    differences acceptable if the BAM was re-realigned post-fix)."
 echo "  - IGH-spanning BND counts match the FISH-known translocation for"
-echo "    this sample (sample 11F202612108 has t(11;14) 95% by FISH, so"
+echo "    (validation note: compare against the sample's known FISH result, if available)"
 echo "    IGH<->CCND1 should be > 0 in both columns)."

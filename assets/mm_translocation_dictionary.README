@@ -1,0 +1,31 @@
+mm_translocation_dictionary.tsv — partner naming note
+=====================================================
+
+Partner names in this file (partner_a / partner_b) use the dictionary's own
+convention, which differs from the panel BED labels on purpose:
+
+  - Ig loci carry a "_locus" suffix here (IGH_locus, IGK_locus, IGL_locus)
+    but are labeled plainly in the BED (IGH, IGK, IGL / IGL/IGLL5).
+  - Compound partners are joined with "_" here (FGFR3_NSD2, WWOX_MAF,
+    FCRL4_FCRL5) but with "/" in the BED (FGFR3/NSD2, WWOX/MAF, FCRL5/FCRL4).
+
+These names are NOT compared to the BED as exact strings. The annotation
+matches on gene identity: each partner name is reduced to a set of gene
+tokens (split on "/" and "_", uppercased, with region-suffix words like
+"locus" dropped), and two partners match when their token sets intersect.
+This is implemented in bin/annotate_mm_translocations.py (_norm_tokens and
+dictionary_lookup).
+
+Consequences worth knowing when editing this file:
+  - Order within a pair does not matter (IGH_locus/CCND1 == CCND1/IGH_locus).
+  - Order of the two components in a compound does not matter
+    (FCRL4_FCRL5 == FCRL5/FCRL4).
+  - A BED region that carries an extra component the dictionary does not name
+    still matches (BED "IGL/IGLL5" matches dictionary "IGL_locus" on IGL).
+  - Because matching is token-based, keep partner names as real gene symbols.
+    Do not invent joined tokens that are not genes; the only special word the
+    normalizer strips is "locus".
+
+To add a new canonical pair, add a row with partner_a / partner_b as gene
+symbols (either naming convention works) plus name / frequency / references /
+notes. No code change is needed.
