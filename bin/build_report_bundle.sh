@@ -13,7 +13,7 @@
 #       translocations/ <SAMPLE>.mm_annotated.tsv, <SAMPLE>.translocations.tsv
 #       cnv/            <SAMPLE>.ichor_all_sols.pdf, <SAMPLE>.ichor_params.txt
 #     v6_filter_summary.tsv        (cohort-level, if present)
-#   <bundle>.tar.gz
+#   <bundle>.zip
 #
 # The ".v6_" label from the pipeline is stripped in the bundle copies only;
 # source files are untouched. (The panel is v7; the v6 filename is legacy.)
@@ -86,6 +86,13 @@ for s in "${SAMPLES[@]}"; do
   # CNV: ONLY the all_sols PDF, plus the params (tumor fraction / ploidy).
   copy_first "$d/cnv" "${s}.ichor_all_sols.pdf" "$s" -path '*ichor*' -name '*all_sols*.pdf'
   copy_first "$d/cnv" "${s}.ichor_params.txt"   "$s" -path '*ichor*' -name '*params.txt'
+
+  # QC: on-target panel-region coverage (table + chart) and read-length/qscore summary.
+  copy_first "$d/qc" "${s}.region_coverage.tsv" "$s" -name '*region_coverage.tsv'
+  copy_first "$d/qc" "${s}.region_coverage.png" "$s" -name '*region_coverage.png'
+  copy_first "$d/qc" "${s}.readlen_qscore.tsv"  "$s" -name '*readlen_qscore.tsv'
+  copy_first "$d/qc" "${s}.readlen_hist.png"    "$s" -name '*readlen_hist.png'
+  copy_first "$d/qc" "${s}.qscore_hist.png"     "$s" -name '*qscore_hist.png'
 done
 
 # Cohort-level summary (single file, not per-sample).
@@ -96,11 +103,16 @@ if [[ -n "$summary" ]]; then
 fi
 
 # Tar it up.
-tar czf "${BUNDLE}.tar.gz" "$BUNDLE"
+if command -v zip >/dev/null 2>&1; then
+  zip -rq "${BUNDLE}.zip" "$BUNDLE"
+else
+  echo "WARNING: 'zip' not found; falling back to tar.gz" >&2
+  tar czf "${BUNDLE}.tar.gz" "$BUNDLE"
+fi
 echo ""
 echo "Bundle tree: $BUNDLE/"
-echo "Tarball:     ${BUNDLE}.tar.gz"
-du -sh "${BUNDLE}.tar.gz"
+if [ -f "${BUNDLE}.zip" ]; then echo "Archive:     ${BUNDLE}.zip"; else echo "Archive:     ${BUNDLE}.tar.gz"; fi
+du -sh "${BUNDLE}.zip" 2>/dev/null || du -sh "${BUNDLE}.tar.gz"
 echo ""
 echo "Contents:"
 find "$BUNDLE" -type f | sed "s|^$BUNDLE/||" | sort
