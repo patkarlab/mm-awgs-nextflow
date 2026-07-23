@@ -54,7 +54,11 @@ from parsers import baf_loh as p_baf_loh
 BUILDER_VERSION = "0.5.0-triage+exon"
 
 # Directories under a run dir that are NOT samples.
-NON_SAMPLE_DIRS = {"pipeline_info", "assets"}
+# baf_loh holds the cohort-level BAF/LOH screen table and heatmap rather than
+# a sample. It sits at the bundle root for the same reason filter_summary.tsv
+# does: the screen judges each region against the cohort, so one table covers
+# the whole run and there is nothing per-sample to report from it.
+NON_SAMPLE_DIRS = {"pipeline_info", "assets", "baf_loh"}
 
 # File descriptions for the Files tab. Suffix -> human-readable.
 # Both the production naming convention (underscores throughout) and the
