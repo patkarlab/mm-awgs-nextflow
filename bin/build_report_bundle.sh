@@ -12,7 +12,9 @@
 #       snv/            <SAMPLE>.clinical.tsv, <SAMPLE>.filtered.tsv
 #       translocations/ <SAMPLE>.mm_annotated.tsv, <SAMPLE>.translocations.tsv
 #       cnv/            <SAMPLE>.ichor_all_sols.pdf, <SAMPLE>.ichor_params.txt
+#       baf_loh/        <SAMPLE>.genome_baf_cn.png, <SAMPLE>.region_baf.png
 #     v6_filter_summary.tsv        (cohort-level, if present)
+#     baf_loh/          cohort.baf_screen.tsv, cohort_baf_deflection_heatmap.png
 #   <bundle>.zip
 #
 # The ".v6_" label from the pipeline is stripped in the bundle copies only;
@@ -93,6 +95,11 @@ for s in "${SAMPLES[@]}"; do
   copy_first "$d/qc" "${s}.readlen_qscore.tsv"  "$s" -name '*readlen_qscore.tsv'
   copy_first "$d/qc" "${s}.readlen_hist.png"    "$s" -name '*readlen_hist.png'
   copy_first "$d/qc" "${s}.qscore_hist.png"     "$s" -name '*qscore_hist.png'
+
+  # BAF / LOH: per-sample figures only. The screen table itself is cohort-level
+  # and is copied once, below, rather than duplicated into every sample.
+  copy_first "$d/baf_loh" "${s}.genome_baf_cn.png" "$s" -name '*genome_baf_cn.png'
+  copy_first "$d/baf_loh" "${s}.region_baf.png"    "$s" -name '*region_baf.png'
 done
 
 # Cohort-level summary (single file, not per-sample).
@@ -100,6 +107,23 @@ summary=$(find "$RESULTS" -name 'v6_filter_summary.tsv' 2>/dev/null | head -1 ||
 if [[ -n "$summary" ]]; then
   cp -L "$summary" "$BUNDLE/filter_summary.tsv"
   echo "+ cohort filter_summary.tsv"
+fi
+
+# BAF / LOH screen table. Cohort-scoped by construction: the screen compares
+# each panel region against the cohort median for that same region, so one
+# table covers the whole run. Placed at the bundle root for the same reason
+# filter_summary.tsv is.
+baf_screen=$(find "$RESULTS" -name 'cohort.baf_screen.tsv' 2>/dev/null | head -1 || true)
+if [[ -n "$baf_screen" ]]; then
+  mkdir -p "$BUNDLE/baf_loh"
+  cp -L "$baf_screen" "$BUNDLE/baf_loh/cohort.baf_screen.tsv"
+  echo "+ cohort baf_loh/cohort.baf_screen.tsv"
+
+  baf_heatmap=$(find "$RESULTS" -name 'cohort_baf_deflection_heatmap.png' 2>/dev/null | head -1 || true)
+  if [[ -n "$baf_heatmap" ]]; then
+    cp -L "$baf_heatmap" "$BUNDLE/baf_loh/cohort_baf_deflection_heatmap.png"
+    echo "+ cohort baf_loh/cohort_baf_deflection_heatmap.png"
+  fi
 fi
 
 # Tar it up.

@@ -87,3 +87,6 @@ sequences/
 samplesheets/
 script.log
 =[0-9]*
+report_*/
+report_*.zip
+versions.yml

@@ -24,6 +24,7 @@
       <li class="nav-item"><button class="nav-link"        data-bs-toggle="pill" data-bs-target="#tab-filtered"  type="button" role="tab">Variants &mdash; All Filtered</button></li>
       <li class="nav-item"><button class="nav-link"        data-bs-toggle="pill" data-bs-target="#tab-flt3"      type="button" role="tab">FLT3</button></li>
       <li class="nav-item"><button class="nav-link"        data-bs-toggle="pill" data-bs-target="#tab-cnv"       type="button" role="tab">CNV</button></li>
+      <li class="nav-item"><button class="nav-link"        data-bs-toggle="pill" data-bs-target="#tab-bafloh"    type="button" role="tab">BAF / LOH</button></li>
       <li class="nav-item"><button class="nav-link"        data-bs-toggle="pill" data-bs-target="#tab-igv"       type="button" role="tab">IGV</button></li>
       <li class="nav-item"><button class="nav-link"        data-bs-toggle="pill" data-bs-target="#tab-reporting" type="button" role="tab">Reporting <span id="reporting-count-badge" class="badge bg-secondary ms-1" style="display:none">0</span></button></li>
       <li class="nav-item"><button class="nav-link"        data-bs-toggle="pill" data-bs-target="#tab-files"     type="button" role="tab">Files</button></li>
@@ -274,6 +275,8 @@
       </div>
 
       {# ===== CNV tab ===== #}
+      {% include 'baf_loh_tab.html.j2' %}
+
       <div class="tab-pane fade" id="tab-cnv" role="tabpanel">
         <div class="d-flex justify-content-between align-items-start mb-3">
           <div>

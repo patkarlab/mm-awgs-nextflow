@@ -48,6 +48,7 @@ from parsers import genebe as p_genebe
 from parsers import mobidetails as p_mobidetails
 from parsers import oncokb as p_oncokb
 from parsers import cancervar as p_cancervar
+from parsers import baf_loh as p_baf_loh
 
 
 BUILDER_VERSION = "0.5.0-triage+exon"
@@ -291,6 +292,13 @@ def collect_sample_context(sample_dir, build_time, subdir="",
     # --- CNV ---
     try:
         ctx["cnv"] = p_cnv.parse(effective_dir, sample)
+
+        # The BAF / LOH screen writes one table for the whole run rather than
+        # one per sample, so the parser is given the run directory and filters
+        # to this sample itself. The parser walks upwards from the directory it
+        # is given if the table does not sit directly beneath it.
+        ctx["baf_loh"] = p_baf_loh.parse(effective_dir, sample,
+                                         run_dir=sample_dir.parent)
     except Exception as exc:
         logging.warning("[%s] cnv parse failed: %s", sample, exc)
         ctx["cnv"] = {"clinical_table": None, "scatter_png": None, "diagram_pdf": None,
