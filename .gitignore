@@ -79,3 +79,11 @@ credentials.config
 # patch backups — never track
 *.bak
 *.bak_*
+
+# Run artifacts
+report_v7_*/
+report_v7_*.zip
+sequences/
+samplesheets/
+script.log
+=[0-9]*
