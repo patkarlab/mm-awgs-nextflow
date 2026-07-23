@@ -32,7 +32,7 @@ process MERGE_MINKNOW {
     if [ -d "${minknow_input}" ]; then
         # Directory: take every *.bam at its top level. Point the sample sheet
         # at the folder that directly contains the pass BAMs (e.g. .../bam_pass).
-        find "${minknow_input}" -maxdepth 1 -name '*.bam' | sort > "\$bam_list"
+        find "${minknow_input}/" -maxdepth 1 -name '*.bam' | sort > "\$bam_list"
     else
         # Single file: pass through (cat of one BAM just copies the blocks).
         echo "${minknow_input}" > "\$bam_list"
