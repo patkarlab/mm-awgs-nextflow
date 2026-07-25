@@ -83,6 +83,7 @@ credentials.config
 # Run artifacts
 report_v7_*/
 report_v7_*.zip
+# WARNING: sequences/ holds 301G of raw MinKNOW BAMs. Never git clean -X here.
 sequences/
 samplesheets/
 script.log
