@@ -27,11 +27,38 @@
 
     <div class="col-6 col-lg-3">
       <div class="border rounded p-3 h-100">
-        <div class="text-muted small text-uppercase">On-target regions</div>
+        <div class="text-muted small text-uppercase">Median on-target depth</div>
         <div class="fs-4">
-          {% if qc and qc.found and qc.coverage %}{{ qc.coverage.n_rows }}{% else %}&mdash;{% endif %}
+          {% if qc and qc.found and qc.depth %}
+            {{ "%.1f"|format(qc.depth.median) }}&times;
+          {% else %}&mdash;{% endif %}
         </div>
-        <div class="text-muted small">panel windows with coverage reported</div>
+        <div class="text-muted small">
+          {% if qc and qc.found and qc.depth %}
+            across {{ qc.depth.n_regions }} regions
+            &middot; {{ "%.1f"|format(qc.depth.min) }}&ndash;{{ "%.1f"|format(qc.depth.max) }}&times;
+          {% else %}
+            per-region coverage not available
+          {% endif %}
+        </div>
+      </div>
+    </div>
+
+    <div class="col-6 col-lg-3">
+      <div class="border rounded p-3 h-100">
+        <div class="text-muted small text-uppercase">Regions below 10&times;</div>
+        <div class="fs-4">
+          {% if qc and qc.found and qc.depth %}
+            {{ qc.depth.n_below_10 }}
+          {% else %}&mdash;{% endif %}
+        </div>
+        <div class="text-muted small">
+          {% if qc and qc.found and qc.depth %}
+            of {{ qc.depth.n_regions }} &middot; {{ qc.depth.n_below_5 }} below 5&times;
+          {% else %}
+            &nbsp;
+          {% endif %}
+        </div>
       </div>
     </div>
 
@@ -101,14 +128,17 @@
       <div class="border rounded p-3 h-100">
         <div class="text-muted small text-uppercase">Reads</div>
         <div class="fs-4">
-          {% if qc and qc.found and qc.reads and qc.reads.mode == 'computed' %}
-            {{ "{:,}".format(qc.reads.n_reads) }}
-          {% elif qc and qc.found and qc.reads and qc.reads.mode == 'summary' %}
-            {% set n = qc.reads.pairs | selectattr('key', 'equalto', 'n_reads') | list %}
-            {{ n[0].value if n else '&mdash;' }}
+          {% if qc and qc.found and qc.reads and qc.reads.n_reads %}
+            {{ qc.reads.n_reads }}
           {% else %}&mdash;{% endif %}
         </div>
-        <div class="text-muted small">on-target</div>
+        <div class="text-muted small">
+          {% if qc and qc.found and qc.reads and qc.reads.read_n50 %}
+            on-target &middot; N50 {{ qc.reads.read_n50 }} bp
+          {% else %}
+            on-target
+          {% endif %}
+        </div>
       </div>
     </div>
 

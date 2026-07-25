@@ -263,21 +263,9 @@
       type: "button-group",
       options: [
         { id: "any", label: "Any",  test: function () { return true; } },
-        { id: "gt10", label: ">10", test: function (v) { return v !== null && v > 10; } },
-        { id: "gt15", label: ">15", test: function (v) { return v !== null && v > 15; } },
-        { id: "gt20", label: ">20", test: function (v) { return v !== null && v > 20; } },
-      ],
-      default: "any",
-    },
-    callers_buttons: {
-      label: "Callers",
-      field: "VariantCaller_Count",
-      type: "button-group",
-      options: [
-        { id: "any", label: "Any", test: function () { return true; } },
+        { id: "gt1", label: ">1",  test: function (v) { return v !== null && v > 1; } },
         { id: "gt2", label: ">2",  test: function (v) { return v !== null && v > 2; } },
-        { id: "gt3", label: ">3",  test: function (v) { return v !== null && v > 3; } },
-        { id: "gt4", label: ">4",  test: function (v) { return v !== null && v > 4; } },
+        { id: "gt5", label: ">5",  test: function (v) { return v !== null && v > 5; } },
       ],
       default: "any",
     },
@@ -296,7 +284,6 @@
     { id: "vaf_desc",    label: "VAF (high\u2192low)" },
     { id: "vaf_asc",     label: "VAF (low\u2192high)" },
     { id: "alt_desc",    label: "ALT count (high\u2192low)" },
-    { id: "callers_desc",label: "Callers (high\u2192low)" },
   ];
 
   // Detail-view field groupings. Fields not present in the row are skipped.

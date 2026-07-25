@@ -222,10 +222,16 @@ def run_create_report(sites_path, header, bam, fasta, out_html, flanking, title)
 
 
 def write_sites(rows, columns, path):
-    """Write a sites TSV: chrom, start, end, then the informational columns."""
+    """Write a sites TSV: CHROM, START, END, then the informational columns.
+
+    The coordinate columns are capitalised because igv-reports carries the
+    sites file's header straight into the tableJson it embeds, and the
+    dashboard's lookup parser reads that header by name. Renaming these is
+    enough to break the cross-link between a variant card and its IGV row.
+    """
     with open(path, "w", newline="") as handle:
         writer = csv.writer(handle, delimiter="\t", lineterminator="\n")
-        writer.writerow(["chrom", "start", "end"] + columns)
+        writer.writerow(["CHROM", "START", "END"] + columns)
         for row in rows:
             writer.writerow(
                 [row["chrom"], row["start"], row["end"]]
@@ -264,7 +270,16 @@ def run_somatic(args):
 
     ensure_bam_index(args.bam)
 
-    info_columns = [c for c in SOMATIC_INFO_COLUMNS if c in header]
+    # POSITION, REF and ALT are written explicitly and first. The dashboard
+    # builds its lookup key as CHROM:POSITION:REF:ALT and matches it against
+    # the variant row's Chr:Start:Ref:Alt, so all four must be present in the
+    # rendered table and POSITION must be the 1-based coordinate -- not START,
+    # which is 0-based for the browser's benefit. Omitting REF and ALT, as the
+    # previous column set did, leaves the lookup empty and every variant card
+    # reports "no IGV" with nothing to say why.
+    info_columns = ["POSITION", "REF", "ALT"] + [
+        c for c in SOMATIC_INFO_COLUMNS if c in header
+    ]
     sites = []
     skipped = 0
     for row in rows:
@@ -277,6 +292,9 @@ def run_somatic(args):
         site["chrom"] = row[SOMATIC_CHROM]
         site["start"] = start
         site["end"] = end
+        site["POSITION"] = row[SOMATIC_POS]
+        site["REF"] = row.get("ref", "")
+        site["ALT"] = row.get("alt", "")
         sites.append(site)
 
     if skipped:

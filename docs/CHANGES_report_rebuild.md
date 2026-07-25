@@ -76,3 +76,108 @@ in this application.
   checked. Either the filter writes the same content to both, or every
   reportable variant is also clinical.
 - Wakhan / CN-LOH integration, unchanged from before.
+
+
+---
+
+# Second pass — fixes found by using the reports
+
+Everything below was found by opening the built reports rather than by testing
+the code, which is worth recording: each one produced a report that looked
+finished.
+
+## IGV cross-links from variant cards
+
+Every clinical variant card showed "no IGV". The report existed and the hash
+router was injected, so the failure was in the lookup that joins them.
+
+`parsers/igv.py` builds its lookup from the igv-reports `tableJson` headers
+`CHROM, POSITION, REF, ALT`, keyed as `chr:pos:ref:alt`, and the browser builds
+`_igvKey` as `Chr:Start:Ref:Alt`. The sites file written by `igv_snapshots.py`
+carried `chrom, start, end` and **no REF or ALT column at all**, so the lookup
+came back empty.
+
+The somatic sites file now writes `CHROM, START, END, POSITION, REF, ALT` ahead
+of the annotation columns. `POSITION` is the 1-based coordinate; `START` stays
+0-based for igv.js. They are deliberately separate columns and should not be
+collapsed.
+
+Translocation pages were never affected: the paired viewer resolves through its
+own manifest, not this lookup.
+
+## Cohort index
+
+Mean cov, % >= 100x, Fold-80, % dup and FLT3-ITD all came from Picard or a
+per-exon coverage table and rendered blank on every row. Replaced with median
+depth, regions below 10x, and rearrangement count.
+
+Median rather than mean: the panel mixes focal gene-body windows with megabase
+breakpoint windows, so a panel-wide mean is pulled down by the wide ones. The
+low-coverage count sits beside it so a good median cannot hide a set of regions
+with nothing in them.
+
+## Variant filter thresholds
+
+ALT count offered > 10, > 15, > 20. Against an observed distribution of 63
+calls at 1 alt read, 18 at 2 and 8 at >= 3, all three buttons returned nothing.
+Now > 1, > 2, > 5.
+
+The Callers filter and its sort entry are removed. The field is
+`VariantCaller_Count`, somatic calling here uses one caller, and no option
+could ever match. Removed rather than backfilled with a constant: asserting a
+caller count that was never measured puts a number in a clinical report that no
+part of the pipeline produced. `alias_variant_table.py --caller-count 1`
+remains available for anyone who wants the column.
+
+## BAF/LOH tab
+
+`cn_note` repeated the same sentence on all 66 regions, so each row ran to
+several lines and the numeric columns became unreadable. The note is now
+collapsed to one line and expandable, and when it is identical across every row
+it is lifted into a single banner above the table, since in that case it
+describes the ichorCNA fit rather than the regions.
+
+A flag filter is built from the values present, with counts, anchored so
+`LOH_LIKELY` does not also match a longer value.
+
+Figures gain an include-in-report control, feature-detected against
+`window.tspipeReporting`. If that API is absent or named differently the
+control does not appear, rather than appearing and silently discarding
+selections.
+
+All three are applied to the rendered table by
+`templates/baf_loh_enhance.html.j2`, not by rewriting `baf_loh_tab.html.j2`.
+The enhancement cannot break the pane and survives changes to it.
+
+## Script resolution under Nextflow
+
+`REPORT_ZIP` called `make_report_zip.sh` from `tools/`, which Nextflow never
+stages; only `bin/` is added to PATH. Moved.
+
+`build_report_bundle.sh` located `alias_variant_table.py` through
+`SCRIPT_DIR`. Run by hand the two sit together; run as a process the script is
+staged into a task directory alone. The alias step had a `cp` fallback, so
+`REPORT_BUNDLE` reported success while writing variant tables with no alias
+columns and the Variants tabs rendered empty, with nothing in any log to say
+why. The helper is now resolved via `SCRIPT_DIR` then PATH and the run aborts
+if neither finds it. The fallback is gone.
+
+Any other script reaching for a sibling by path has the same exposure:
+
+```bash
+grep -rn 'SCRIPT_DIR' bin/*.sh
+```
+
+## Cohort BAF/LOH figures
+
+The pipeline module writes `baf_cn_figures/` where the standalone script writes
+`figures/`. The bundle matched only `figures/`, so pipeline runs silently
+carried no cohort plots. The directory is now located by content.
+
+## Not fixed, and not a report problem
+
+On-target depth for the 20260720 batch runs 2-6x against a v7 target of
+15-20x. At that depth a single alt read is a 30-50% VAF, which is why the
+sample with the lowest depth carries the most clinical variants and the highest
+mean VAF. No filter threshold recovers information that was not sequenced. This
+is a sequencing yield question, not a reporting one.

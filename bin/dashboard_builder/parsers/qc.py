@@ -280,6 +280,94 @@ def _summarise_reads(path):
     }
 
 
+DEPTH_HINTS = ("mean_depth", "median_depth", "depth", "mean_cov", "coverage")
+
+
+def _depth_summary(coverage):
+    """Median, mean and range of per-region depth.
+
+    The panel deliberately mixes focal gene-body windows with megabase
+    breakpoint windows, so a panel-wide mean understates the focal regions.
+    The median across regions is the more representative single number, and
+    the range is carried alongside so neither is read as uniform coverage.
+    """
+    if not coverage or not coverage.get("columns"):
+        return None
+
+    index = None
+    for hint in DEPTH_HINTS:
+        for i, column in enumerate(coverage["columns"]):
+            if column["key"].lower() == hint:
+                index = i
+                break
+        if index is not None:
+            break
+    if index is None:
+        for i, column in enumerate(coverage["columns"]):
+            if column["numeric"] and any(
+                h in column["key"].lower() for h in ("depth", "cov")
+            ):
+                index = i
+                break
+    if index is None:
+        return None
+
+    values = []
+    for row in coverage["rows"]:
+        if index >= len(row):
+            continue
+        order = row[index].get("order")
+        if order is not None:
+            values.append(order)
+    if not values:
+        return None
+
+    values.sort()
+    n = len(values)
+    median = values[n // 2] if n % 2 else (values[n // 2 - 1] + values[n // 2]) / 2.0
+
+    return {
+        "column": coverage["columns"][index]["key"],
+        "n_regions": n,
+        "median": median,
+        "mean": sum(values) / float(n),
+        "min": values[0],
+        "max": values[-1],
+        "n_below_5": sum(1 for v in values if v < 5),
+        "n_below_10": sum(1 for v in values if v < 10),
+    }
+
+
+def _normalise_reads(reads):
+    """Expose n_reads, read_n50 and mean_q whichever shape the file had.
+
+    A one-row summary file and a per-read table both end up with the same
+    three keys, so the templates do not have to know which was on disk.
+    """
+    if not reads:
+        return reads
+    if reads.get("mode") != "summary":
+        return reads
+
+    lookup = {}
+    for pair in reads.get("pairs", []):
+        lookup[pair["key"].strip().lower()] = pair["value"]
+
+    def find(*candidates):
+        for candidate in candidates:
+            if candidate in lookup:
+                return lookup[candidate]
+        for key, value in lookup.items():
+            if any(c in key for c in candidates):
+                return value
+        return None
+
+    reads["n_reads"] = find("n_reads", "num_reads", "read_count", "reads")
+    reads["read_n50"] = find("read_n50", "n50")
+    reads["mean_q"] = find("mean_q", "meanq", "qscore")
+    return reads
+
+
 def parse(effective_dir, sample):
     """Collect QC plots, the coverage table and per-read summary statistics."""
     def not_found(reason):
@@ -336,9 +424,12 @@ def parse(effective_dir, sample):
     if not plots and not coverage and not reads:
         return not_found("qc/ exists but holds no recognised products: %s" % qc_dir)
 
+    reads = _normalise_reads(reads)
+
     return {
         "found": True,
         "searched": str(effective_dir),
+        "depth": _depth_summary(coverage),
         "qc_dir": qc_dir,
         "plots": plots,
         "coverage": coverage,
