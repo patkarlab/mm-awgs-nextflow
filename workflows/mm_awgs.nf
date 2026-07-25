@@ -15,6 +15,9 @@ include { T2T_TRACK     } from '../subworkflows/local/t2t_track.nf'
 include { HG38_TRACK    } from '../subworkflows/local/hg38_track.nf'
 include { REPORT_BUNDLE } from '../modules/local/report_bundle.nf'
 include { DASHBOARD     } from '../modules/local/dashboard.nf'
+include { IGV_SNAPSHOTS       } from '../modules/local/igv_snapshots.nf'
+include { EMBED_REPORT_ASSETS } from '../modules/local/embed_report_assets.nf'
+include { REPORT_ZIP          } from '../modules/local/report_zip.nf'
 
 workflow MM_AWGS {
 
@@ -37,6 +40,36 @@ workflow MM_AWGS {
     //               phased germline via Clair3 + VEP annotation)
     if (!params.skip_hg38_track) {
         HG38_TRACK(minknow_bams)
+    }
+
+    // 4b. IGV snapshots.
+    //
+    // Two evidence classes per sample: paired breakpoint pages for each
+    // rearrangement against T2T, and one clinical SNV page against hg38. The
+    // SNV page is published under the filename the dashboard builder
+    // resolves, which also gives the variant cards their IGV links.
+    //
+    // Joined on meta so each sample's tables stay with its own alignments.
+    // v6_report uses remainder because a sample with no on-panel clinical
+    // SNVs never emits one; without it that sample would be dropped here and
+    // lose its translocation pages too.
+    if (!params.skip_igv && !params.skip_t2t_track && !params.skip_hg38_track) {
+        igv_input = T2T_TRACK.out.mm_annotated_tsv
+            .join(T2T_TRACK.out.t2t_bam_bai)
+            .join(HG38_TRACK.out.hg38_bam_bai)
+            .join(HG38_TRACK.out.v6_report, remainder: true)
+            .filter { it[0] != null && it[1] != null }
+            .map { meta, mm, tbam, tbai, hbam, hbai, clin ->
+                tuple(meta, mm, clin ?: [], tbam, tbai, hbam, hbai)
+            }
+
+        IGV_SNAPSHOTS(
+            igv_input,
+            file(params.t2t_fasta),
+            file(params.t2t_fai),
+            file(params.hg38_fasta),
+            file(params.hg38_fai)
+        )
     }
 
     // 5. Reporting.
@@ -64,6 +97,12 @@ workflow MM_AWGS {
                 .mix(HG38_TRACK.out.baf_loh_screen.map  { it -> 'ok' })
         }
 
+        // IGV pages are collected by the bundle, so the bundle must not
+        // start before they are published.
+        if (!params.skip_igv && !params.skip_t2t_track && !params.skip_hg38_track) {
+            ready = ready.mix(IGV_SNAPSHOTS.out.igv.map { it -> 'ok' })
+        }
+
         bundle_name = params.report_bundle_name
             ?: "report_" + file(params.outdir).getName()
 
@@ -79,6 +118,14 @@ workflow MM_AWGS {
                 REPORT_BUNDLE.out.bundle,
                 file("${projectDir}/bin/dashboard_builder")
             )
+
+            // Inline every local dependency, then package. Without the embed
+            // step the reports reference their stylesheets and figures by
+            // relative path and break as soon as they are moved.
+            if (!params.skip_report_package) {
+                EMBED_REPORT_ASSETS(DASHBOARD.out.bundle)
+                REPORT_ZIP(EMBED_REPORT_ASSETS.out.bundle)
+            }
         }
     }
 }

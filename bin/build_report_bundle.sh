@@ -1,31 +1,33 @@
 #!/usr/bin/env bash
 #
 # build_report_bundle.sh
-# ----------------------
-# Build a per-sample, downloadable reporting bundle from a pipeline results
-# directory. Copies REAL files (not symlinks) so the resulting tarball is
-# self-contained and portable off gandalf.
+#
+# Assemble a per-sample report bundle from a results directory. The bundle is
+# what the dashboard builder runs against, and what gets archived or handed
+# over, so it holds real files rather than symlinks into the work tree.
 #
 # Layout produced:
-#   <bundle>/
-#     <SAMPLE>/
-#       snv/            <SAMPLE>.clinical.tsv, <SAMPLE>.filtered.tsv
-#       translocations/ <SAMPLE>.mm_annotated.tsv, <SAMPLE>.translocations.tsv
-#       cnv/            <SAMPLE>.ichor_all_sols.pdf, <SAMPLE>.ichor_params.txt
-#       baf_loh/        <SAMPLE>.genome_baf_cn.png, <SAMPLE>.region_baf.png
-#     v6_filter_summary.tsv        (cohort-level, if present)
-#     baf_loh/          cohort.baf_screen.tsv, cohort_baf_deflection_heatmap.png
-#   <bundle>.zip
+#   <bundle>/<sample>/snv/            clinical and filtered variant tables
+#   <bundle>/<sample>/translocations/ merged and annotated SV tables
+#   <bundle>/<sample>/cnv/            ichorCNA figure and fit parameters
+#   <bundle>/<sample>/qc/             on-target QC plots and tables
+#   <bundle>/<sample>/baf_loh/        per-sample BAF/LOH figures
+#   <bundle>/<sample>/igv/            IGV snapshot pages and manifest
+#   <bundle>/baf_loh/                 cohort BAF screen tables
+#   <bundle>/filter_summary.tsv       cohort SNV filter summary
 #
-# The ".v6_" label from the pipeline is stripped in the bundle copies only;
-# source files are untouched. (The panel is v7; the v6 filename is legacy.)
+# Changes from the previous version: baf_loh/ and igv/ are now collected. Both
+# were being produced by the pipeline and left behind in the results tree, so
+# the dashboard rendered an empty BAF/LOH tab and had no IGV pages to link to.
 #
 # Usage:
-#   ./build_report_bundle.sh <results_dir> [bundle_name]
+#   bin/build_report_bundle.sh <results_dir> [bundle_name]
 # Example:
-#   ./build_report_bundle.sh results_v7_20260713_24h report_v7_20260713_24h
-#
+#   bin/build_report_bundle.sh results_v7_20260713_24h report_v7_20260713_24h
+
 set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 RESULTS="${1:?Usage: build_report_bundle.sh <results_dir> [bundle_name]}"
 BUNDLE="${2:-report_$(basename "$RESULTS")}"
@@ -41,14 +43,13 @@ mapfile -t SAMPLES < <(
     | sed 's/\.mm_annotated\.tsv$//' | sort -u
 )
 if [[ ${#SAMPLES[@]} -eq 0 ]]; then
-  # fallback: derive from clinical TSVs
   mapfile -t SAMPLES < <(
     find "$RESULTS" -name '*clinical.tsv' -printf '%f\n' 2>/dev/null \
-      | sed -E 's/(\.somatic_candidates)?\.v6_clinical\.tsv$//' | sort -u
+      | sed -E 's/(\.somatic_candidates)?(\.withAD)?\.v6_clinical\.tsv$//' | sort -u
   )
 fi
 if [[ ${#SAMPLES[@]} -eq 0 ]]; then
-  echo "ERROR: no samples found (no *.mm_annotated.tsv or *clinical.tsv under $RESULTS)" >&2
+  echo "ERROR: no samples found under $RESULTS" >&2
   exit 1
 fi
 
@@ -56,8 +57,7 @@ echo "Samples detected: ${SAMPLES[*]}"
 rm -rf "$BUNDLE"
 mkdir -p "$BUNDLE"
 
-# copy_first <destdir> <destname> <find-pattern...>
-# Finds the first matching file under RESULTS filtered to the sample, copies it.
+# copy_first <destdir> <destname> <sample> <find-args...>
 copy_first() {
   local destdir="$1"; shift
   local destname="$1"; shift
@@ -73,70 +73,183 @@ copy_first() {
   fi
 }
 
+# copy_all <destdir> <sample> <find-args...>
+# Copies every match, preserving the source filename. Used where the count is
+# not known ahead of time, such as IGV breakpoint pages.
+copy_all() {
+  local destdir="$1"; shift
+  local sample="$1"; shift
+  local count=0
+  while IFS= read -r src; do
+    [[ -f "$src" ]] || continue
+    mkdir -p "$destdir"
+    cp -L "$src" "$destdir/$(basename "$src")"
+    count=$((count + 1))
+  done < <(find "$RESULTS" -type f "$@" 2>/dev/null | grep -F "$sample" || true)
+  if [[ $count -gt 0 ]]; then
+    echo "  + ${count} file(s) -> $(basename "$destdir")/"
+  fi
+  return 0
+}
+
+# copy_keep_name <destdir> <sample> <find-args...>
+# Copies the first match under its original basename, skipping the copy if a
+# file of that name is already present.
+copy_keep_name() {
+  local destdir="$1"; shift
+  local sample="$1"; shift
+  local src
+  src=$(find "$RESULTS" -type f "$@" 2>/dev/null | grep -F "$sample" | head -1 || true)
+  if [[ -n "$src" && -f "$src" ]]; then
+    mkdir -p "$destdir"
+    local base
+    base=$(basename "$src")
+    if [[ ! -f "$destdir/$base" ]]; then
+      cp -L "$src" "$destdir/$base"
+      echo "  + $base (original name)"
+    fi
+  fi
+}
+
 for s in "${SAMPLES[@]}"; do
   echo "== $s =="
   d="$BUNDLE/$s"
 
-  # SNV (strip the v6 label in the bundle)
-  copy_first "$d/snv" "${s}.clinical.tsv" "$s" -name '*clinical.tsv'
-  copy_first "$d/snv" "${s}.filtered.tsv" "$s" -name '*filtered.tsv'
+  # SNV. One file per class, written under the name the dashboard builder
+  # discovers, with alias columns added so its variant browser can read them.
+  #
+  # The browser resolves columns by exact name and was written against a table
+  # using capitalised names, while this pipeline's filter emits mostly
+  # lowercase ones. Only REF_COUNT, ALT_COUNT and Filter match in both, which
+  # is why those three were the only fields that rendered. alias_variant_table
+  # appends a capitalised duplicate of each column, preserving the originals,
+  # so both readers are satisfied from a single file.
+  #
+  # Names come from build.py's own discovery patterns. Override with
+  # SNV_ALIAS_CLINICAL / SNV_ALIAS_FILTERED.
+  alias_clin="${SNV_ALIAS_CLINICAL:-${s}_somaticseq_clinical_final.tsv}"
+  alias_filt="${SNV_ALIAS_FILTERED:-${s}_somaticseq_filtered.tsv}"
+
+  src_clin=$(find "$RESULTS" -type f -name '*clinical.tsv' 2>/dev/null | grep -F "$s" | head -1 || true)
+  src_filt=$(find "$RESULTS" -type f -name '*filtered.tsv'  2>/dev/null | grep -F "$s" | head -1 || true)
+
+  for pair in "clin:${src_clin}:${alias_clin}" "filt:${src_filt}:${alias_filt}"; do
+    kind="${pair%%:*}"; rest="${pair#*:}"
+    src="${rest%%:*}"; dest="${rest#*:}"
+    if [[ -n "$src" && -f "$src" ]]; then
+      mkdir -p "$d/snv"
+      # SNV_EXTRA_ALIASES is a space-separated list of NAME=SOURCE pairs,
+      # for a consumer that reads a column name the built-in set misses.
+      #   SNV_EXTRA_ALIASES="start=pos Locus=chrom" bin/build_report_bundle.sh ...
+      extra_args=()
+      for a in ${SNV_EXTRA_ALIASES:-}; do extra_args+=( --extra-alias "$a" ); done
+      if python3 "${SCRIPT_DIR}/alias_variant_table.py" "$src" "$d/snv/${dest}" "${extra_args[@]+"${extra_args[@]}"}" 2>/dev/null; then
+        cp -L "$d/snv/${dest}" "$d/${dest}"
+        echo "  + ${dest} (aliased columns, snv/ and sample root)"
+      else
+        cp -L "$src" "$d/snv/${dest}"
+        cp -L "$src" "$d/${dest}"
+        echo "  + ${dest} (plain copy; alias step unavailable)" >&2
+      fi
+    else
+      echo "  - (missing) ${kind} variant table" >&2
+    fi
+  done
 
   # Translocations
   copy_first "$d/translocations" "${s}.mm_annotated.tsv"   "$s" -name '*.mm_annotated.tsv'
   copy_first "$d/translocations" "${s}.translocations.tsv" "$s" -name '*.translocations.tsv'
 
-  # CNV: ONLY the all_sols PDF, plus the params (tumor fraction / ploidy).
+  # CNV: the all-solutions figure and the fit parameters only.
   copy_first "$d/cnv" "${s}.ichor_all_sols.pdf" "$s" -path '*ichor*' -name '*all_sols*.pdf'
   copy_first "$d/cnv" "${s}.ichor_params.txt"   "$s" -path '*ichor*' -name '*params.txt'
 
-  # QC: on-target panel-region coverage (table + chart) and read-length/qscore summary.
-  copy_first "$d/qc" "${s}.region_coverage.tsv" "$s" -name '*region_coverage.tsv'
-  copy_first "$d/qc" "${s}.region_coverage.png" "$s" -name '*region_coverage.png'
-  copy_first "$d/qc" "${s}.readlen_qscore.tsv"  "$s" -name '*readlen_qscore.tsv'
-  copy_first "$d/qc" "${s}.readlen_hist.png"    "$s" -name '*readlen_hist.png'
-  copy_first "$d/qc" "${s}.qscore_hist.png"     "$s" -name '*qscore_hist.png'
+  # QC: adaptive-sampling plots and per-region coverage.
+  copy_first "$d/qc" "${s}.region_coverage.tsv" "$s" -name '*.region_coverage.tsv'
+  copy_first "$d/qc" "${s}.region_coverage.png" "$s" -name '*.region_coverage.png'
+  copy_first "$d/qc" "${s}.readlen_hist.png"    "$s" -name '*.readlen_hist.png'
+  copy_first "$d/qc" "${s}.qscore_hist.png"     "$s" -name '*.qscore_hist.png'
+  copy_first "$d/qc" "${s}.readlen_qscore.tsv"  "$s" -name '*.readlen_qscore.tsv'
 
-  # BAF / LOH: per-sample figures only. The screen table itself is cohort-level
-  # and is copied once, below, rather than duplicated into every sample.
-  copy_first "$d/baf_loh" "${s}.genome_baf_cn.png" "$s" -name '*genome_baf_cn.png'
-  copy_first "$d/baf_loh" "${s}.region_baf.png"    "$s" -name '*region_baf.png'
+  # BAF / LOH: per-sample figures. The cohort tables are copied once below.
+  copy_all "$d/baf_loh" "$s" -path '*baf_loh*' -name '*.png'
+
+  # IGV: breakpoint pages, the somatic page, and the manifest that maps
+  # events to pages. Directory structure is flattened per evidence class so
+  # the dashboard's relative hrefs stay short.
+  copy_all "$d/igv/translocations" "$s" -path '*igv*translocations*' -name '*.html'
+  copy_all "$d/igv/translocations" "$s" -path '*igv*' -name '*.manifest.json'
+  copy_all "$d/igv/somatic"        "$s" -path '*igv*somatic*' -name '*.html'
+
+  # The IGV tab loads exactly one page, resolved by build.py as
+  #   effective_dir / f"{sample}_igv_report.html"
+  # so the somatic page is placed there. The builder then extracts a row
+  # lookup from it and injects a hash router in place, which is what gives the
+  # clinical variant cards their working IGV links. Override with IGV_ALIAS
+  # only if that expression changes.
+  som=$(find "$RESULTS" -type f -ipath '*igv*somatic*' -name '*.html' 2>/dev/null | grep -F "$s" | head -1 || true)
+  if [[ -n "$som" && -f "$som" ]]; then
+    igv_dest="${IGV_ALIAS:-${s}_igv_report.html}"
+    cp -L "$som" "$d/${igv_dest}"
+    echo "  + ${igv_dest} (IGV tab source)"
+  else
+    echo "  - (missing) somatic IGV page; IGV tab and variant IGV links stay empty" >&2
+  fi
 done
 
-# Cohort-level summary (single file, not per-sample).
+# Cohort-level artefacts (single copies, not per-sample).
 summary=$(find "$RESULTS" -name 'v6_filter_summary.tsv' 2>/dev/null | head -1 || true)
 if [[ -n "$summary" ]]; then
   cp -L "$summary" "$BUNDLE/filter_summary.tsv"
   echo "+ cohort filter_summary.tsv"
 fi
 
-# BAF / LOH screen table. Cohort-scoped by construction: the screen compares
-# each panel region against the cohort median for that same region, so one
-# table covers the whole run. Placed at the bundle root for the same reason
-# filter_summary.tsv is.
-baf_screen=$(find "$RESULTS" -name 'cohort.baf_screen.tsv' 2>/dev/null | head -1 || true)
-if [[ -n "$baf_screen" ]]; then
-  mkdir -p "$BUNDLE/baf_loh"
-  cp -L "$baf_screen" "$BUNDLE/baf_loh/cohort.baf_screen.tsv"
-  echo "+ cohort baf_loh/cohort.baf_screen.tsv"
-
-  baf_heatmap=$(find "$RESULTS" -name 'cohort_baf_deflection_heatmap.png' 2>/dev/null | head -1 || true)
-  if [[ -n "$baf_heatmap" ]]; then
-    cp -L "$baf_heatmap" "$BUNDLE/baf_loh/cohort_baf_deflection_heatmap.png"
-    echo "+ cohort baf_loh/cohort_baf_deflection_heatmap.png"
+# The pipeline publishes BAF/LOH under more than one path, and not all of them
+# hold the cohort tables. Pick the directory that actually contains a
+# cohort*.tsv rather than whichever find reaches first.
+baf_dir=""
+while IFS= read -r candidate; do
+  if compgen -G "${candidate}/cohort*.tsv" > /dev/null; then
+    baf_dir="$candidate"
+    break
   fi
+done < <(find "$RESULTS" -type d -name 'baf_loh' 2>/dev/null | sort)
+
+if [[ -z "$baf_dir" ]]; then
+  # Fall back to any baf_loh directory so figures are still collected.
+  baf_dir=$(find "$RESULTS" -type d -name 'baf_loh' 2>/dev/null | head -1 || true)
+  [[ -n "$baf_dir" ]] && echo "  note: no cohort*.tsv found; using $baf_dir" >&2
 fi
 
-# Tar it up.
-if command -v zip >/dev/null 2>&1; then
-  zip -rq "${BUNDLE}.zip" "$BUNDLE"
+if [[ -n "$baf_dir" ]]; then
+  mkdir -p "$BUNDLE/baf_loh"
+  find "$baf_dir" -maxdepth 1 -type f -name '*.tsv' -exec cp -L {} "$BUNDLE/baf_loh/" \;
+  if [[ -d "$baf_dir/figures" ]]; then
+    mkdir -p "$BUNDLE/baf_loh/figures"
+    cp -L "$baf_dir"/figures/*.png "$BUNDLE/baf_loh/figures/" 2>/dev/null || true
+  fi
+  n_baf=$(find "$BUNDLE/baf_loh" -type f | wc -l)
+  echo "+ cohort baf_loh/ from ${baf_dir} (${n_baf} files)"
+  if [[ "$n_baf" -eq 0 ]]; then
+    echo "  WARNING: baf_loh directory found but empty; the BAF/LOH tab will render empty" >&2
+  fi
 else
-  echo "WARNING: 'zip' not found; falling back to tar.gz" >&2
+  echo "- (missing) cohort baf_loh/" >&2
+fi
+
+# The tarball is off by default: tools/make_report_zip.sh produces the
+# distributable archive, and writing both leaves two multi-hundred-megabyte
+# copies of the same tree on disk. Set BUNDLE_TAR=1 if the tar is wanted.
+if [[ "${BUNDLE_TAR:-0}" == "1" ]]; then
   tar czf "${BUNDLE}.tar.gz" "$BUNDLE"
+  echo ""
+  echo "Tarball:     ${BUNDLE}.tar.gz"
+  du -sh "${BUNDLE}.tar.gz"
 fi
 echo ""
 echo "Bundle tree: $BUNDLE/"
-if [ -f "${BUNDLE}.zip" ]; then echo "Archive:     ${BUNDLE}.zip"; else echo "Archive:     ${BUNDLE}.tar.gz"; fi
-du -sh "${BUNDLE}.zip" 2>/dev/null || du -sh "${BUNDLE}.tar.gz"
+du -sh "$BUNDLE"
+echo "Archive it with: tools/make_report_zip.sh $BUNDLE"
 echo ""
-echo "Contents:"
-find "$BUNDLE" -type f | sed "s|^$BUNDLE/||" | sort
+echo "Per-sample contents:"
+find "$BUNDLE" -mindepth 2 -maxdepth 2 -type d | sed "s|^$BUNDLE/||" | sort | uniq -c | sort -rn | head -20

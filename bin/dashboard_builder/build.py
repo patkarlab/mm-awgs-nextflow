@@ -49,6 +49,9 @@ from parsers import mobidetails as p_mobidetails
 from parsers import oncokb as p_oncokb
 from parsers import cancervar as p_cancervar
 from parsers import baf_loh as p_baf_loh
+from parsers import translocations as p_translocations
+from parsers import ichor as p_ichor
+from parsers import qc as p_qc
 
 
 BUILDER_VERSION = "0.5.0-triage+exon"
@@ -403,6 +406,12 @@ def collect_sample_context(sample_dir, build_time, subdir="",
             listing.append((entry.name, describe_file(entry.name)))
     ctx["files"]["listing"] = listing
 
+    # Structural variants, copy number and adaptive-sampling QC.
+    # Each parser returns None when its inputs are absent, and the
+    # matching template renders an empty state rather than failing.
+    ctx["translocations"] = p_translocations.parse(effective_dir, sample)
+    ctx["ichor"] = p_ichor.parse(effective_dir, sample)
+    ctx["qc"] = p_qc.parse(effective_dir, sample)
     return ctx
 
 
