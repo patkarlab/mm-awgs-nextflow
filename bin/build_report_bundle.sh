@@ -29,6 +29,29 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
+# Locate the column-alias helper.
+#
+# Run by hand, it sits beside this script. Run as a Nextflow process, this
+# script is staged into a task directory on its own and the sibling is not
+# there, but bin/ is on PATH. Both are tried, and if neither resolves the
+# failure is loud: the previous version fell back to a plain copy and reported
+# success, producing variant tables with no alias columns and a report whose
+# fields silently came back empty.
+ALIAS_SCRIPT="${ALIAS_SCRIPT:-}"
+if [[ -z "$ALIAS_SCRIPT" ]]; then
+    if [[ -f "${SCRIPT_DIR}/alias_variant_table.py" ]]; then
+        ALIAS_SCRIPT="${SCRIPT_DIR}/alias_variant_table.py"
+    elif command -v alias_variant_table.py > /dev/null 2>&1; then
+        ALIAS_SCRIPT="$(command -v alias_variant_table.py)"
+    fi
+fi
+if [[ -z "$ALIAS_SCRIPT" ]]; then
+    echo "ERROR: alias_variant_table.py not found beside this script or on PATH." >&2
+    echo "       Without it the variant browser cannot resolve its columns and" >&2
+    echo "       the Variants tabs render empty. Set ALIAS_SCRIPT to override." >&2
+    exit 1
+fi
+
 RESULTS="${1:?Usage: build_report_bundle.sh <results_dir> [bundle_name]}"
 BUNDLE="${2:-report_$(basename "$RESULTS")}"
 
@@ -143,14 +166,12 @@ for s in "${SAMPLES[@]}"; do
       #   SNV_EXTRA_ALIASES="start=pos Locus=chrom" bin/build_report_bundle.sh ...
       extra_args=()
       for a in ${SNV_EXTRA_ALIASES:-}; do extra_args+=( --extra-alias "$a" ); done
-      if python3 "${SCRIPT_DIR}/alias_variant_table.py" "$src" "$d/snv/${dest}" "${extra_args[@]+"${extra_args[@]}"}" 2>/dev/null; then
-        cp -L "$d/snv/${dest}" "$d/${dest}"
-        echo "  + ${dest} (aliased columns, snv/ and sample root)"
-      else
-        cp -L "$src" "$d/snv/${dest}"
-        cp -L "$src" "$d/${dest}"
-        echo "  + ${dest} (plain copy; alias step unavailable)" >&2
-      fi
+      # Not guarded by a fallback on purpose. A plain copy here produces a
+      # bundle that looks complete and a report with empty variant fields,
+      # which is harder to notice than a failed run.
+      python3 "$ALIAS_SCRIPT" "$src" "$d/snv/${dest}" "${extra_args[@]+"${extra_args[@]}"}"
+      cp -L "$d/snv/${dest}" "$d/${dest}"
+      echo "  + ${dest} (aliased columns, snv/ and sample root)"
     else
       echo "  - (missing) ${kind} variant table" >&2
     fi
@@ -224,9 +245,24 @@ fi
 if [[ -n "$baf_dir" ]]; then
   mkdir -p "$BUNDLE/baf_loh"
   find "$baf_dir" -maxdepth 1 -type f -name '*.tsv' -exec cp -L {} "$BUNDLE/baf_loh/" \;
-  if [[ -d "$baf_dir/figures" ]]; then
-    mkdir -p "$BUNDLE/baf_loh/figures"
-    cp -L "$baf_dir"/figures/*.png "$BUNDLE/baf_loh/figures/" 2>/dev/null || true
+
+  # Cohort figures. The pipeline module writes them to baf_cn_figures/ while
+  # the standalone script writes figures/, so any immediate subdirectory
+  # holding PNGs is taken and normalised to figures/ in the bundle, which is
+  # where the dashboard looks. Matching only figures/ silently skipped the
+  # cohort plots on pipeline runs.
+  fig_count=0
+  for figdir in "$baf_dir"/*/; do
+    [[ -d "$figdir" ]] || continue
+    if compgen -G "${figdir}*.png" > /dev/null 2>&1; then
+      mkdir -p "$BUNDLE/baf_loh/figures"
+      cp -L "${figdir}"*.png "$BUNDLE/baf_loh/figures/" 2>/dev/null || true
+      fig_count=$((fig_count + 1))
+      echo "  cohort figures from $(basename "$figdir")" >&2
+    fi
+  done
+  if [[ "$fig_count" -eq 0 ]]; then
+    echo "  WARNING: no cohort BAF/LOH figures found under ${baf_dir}" >&2
   fi
   n_baf=$(find "$BUNDLE/baf_loh" -type f | wc -l)
   echo "+ cohort baf_loh/ from ${baf_dir} (${n_baf} files)"
@@ -249,7 +285,7 @@ fi
 echo ""
 echo "Bundle tree: $BUNDLE/"
 du -sh "$BUNDLE"
-echo "Archive it with: tools/make_report_zip.sh $BUNDLE"
+echo "Archive it with: bin/make_report_zip.sh $BUNDLE"
 echo ""
 echo "Per-sample contents:"
 find "$BUNDLE" -mindepth 2 -maxdepth 2 -type d | sed "s|^$BUNDLE/||" | sort | uniq -c | sort -rn | head -20

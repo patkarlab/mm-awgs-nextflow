@@ -23,7 +23,7 @@ Everything here runs in `awgs_sv`, which was confirmed to hold both
 | `bin/build_report_bundle.sh` | replaces existing | Now also collects `igv/` and `baf_loh/` |
 | `bin/apply_report_rebuild.py` | same path in repo | Idempotent patch wiring the above into `build.py` and `sample_report.html.j2` |
 | `tools/make_igv_snapshots.sh` | same path in repo | Standalone cohort wrapper, for runs that predate IGV being wired in |
-| `tools/make_report_zip.sh` | same path in repo | Packages a built bundle into a zip in `~/inbox/from_claude/` |
+| `bin/make_report_zip.sh` | same path in repo | Packages a built bundle into a zip in `~/inbox/from_claude/` |
 
 ---
 
@@ -192,7 +192,7 @@ rm -rf results_v7_20260713_24h/igv
 tools/make_igv_snapshots.sh results_v7_20260713_24h
 bin/build_report_bundle.sh results_v7_20260713_24h report_v7_20260713_24h
 python3 bin/dashboard_builder/build.py report_v7_20260713_24h
-tools/make_report_zip.sh report_v7_20260713_24h --light
+bin/make_report_zip.sh report_v7_20260713_24h --light
 ```
 
 ### Open question: which table the tab should render
@@ -254,12 +254,12 @@ original name.
 
 ## Report zip location
 
-`tools/make_report_zip.sh` writes the archive to the directory the command was
+`bin/make_report_zip.sh` writes the archive to the directory the command was
 run from. Nothing is hardcoded to any inbox or site path.
 
 ```bash
 cd /goast/mm-awgs-nextflow
-tools/make_report_zip.sh report_v7_20260713_24h --light
+bin/make_report_zip.sh report_v7_20260713_24h --light
 # -> /goast/mm-awgs-nextflow/report_v7_20260713_24h_light.zip
 ```
 
@@ -305,7 +305,7 @@ Run it after the dashboard build, before zipping:
 ```bash
 python3 bin/dashboard_builder/build.py report_v7_20260713_24h
 python3 bin/embed_report_assets.py report_v7_20260713_24h
-tools/make_report_zip.sh report_v7_20260713_24h
+bin/make_report_zip.sh report_v7_20260713_24h
 ```
 
 A `.preembed` copy of each rewritten file is kept; `--no-backup` skips it.
@@ -405,7 +405,7 @@ tools/make_igv_snapshots.sh "$RUN"
 bin/build_report_bundle.sh "$RUN" "$BUNDLE"
 python3 bin/dashboard_builder/build.py "$BUNDLE"
 python3 bin/embed_report_assets.py "$BUNDLE"
-tools/make_report_zip.sh "$BUNDLE"
+bin/make_report_zip.sh "$BUNDLE"
 ```
 
 Open `<BUNDLE>/cohort_index.html`. The archive lands beside it as

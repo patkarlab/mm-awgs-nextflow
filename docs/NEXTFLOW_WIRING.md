@@ -115,7 +115,7 @@ git add \
   bin/dashboard_builder/build.py \
   bin/dashboard_builder/templates/sample_report.html.j2 \
   tools/make_igv_snapshots.sh \
-  tools/make_report_zip.sh \
+  bin/make_report_zip.sh \
   modules/local/igv_snapshots.nf \
   modules/local/embed_report_assets.nf \
   modules/local/report_zip.nf \
@@ -174,3 +174,37 @@ git diff --cached --stat | tail -5
 
 Results trees, IGV output, report bundles and archives stay untracked. Confirm
 `.gitignore` covers `report_*/`, `results_*/` and `*.zip`.
+
+
+---
+
+## Scripts must live in bin/
+
+Nextflow adds `<projectDir>/bin` to PATH for every task. `tools/` is never
+staged, so a process calling a script from there fails with `command not
+found`. `make_report_zip.sh` was moved to `bin/` for this reason; invoke it as
+`bin/make_report_zip.sh` when running by hand.
+
+`tools/make_igv_snapshots.sh` stays where it is. It is a standalone wrapper for
+results directories that predate the pipeline stage, and is never called from a
+process.
+
+### The failure that hid behind this
+
+`build_report_bundle.sh` located `alias_variant_table.py` through `SCRIPT_DIR`.
+Run by hand the two sit together; run as a process, the script is staged into a
+task directory alone and the sibling is not there. The alias step was guarded
+by a `cp` fallback, so `REPORT_BUNDLE` reported success while writing variant
+tables with no alias columns, and the Variants tabs came back empty with
+nothing in any log to say why.
+
+The helper is now resolved through `SCRIPT_DIR`, then PATH, and the run aborts
+if neither finds it. The fallback is gone: a bundle that looks complete and
+produces an empty report is worse than a run that stops.
+
+Worth applying the same test to any other script that reaches for a sibling by
+path:
+
+```bash
+grep -rn 'SCRIPT_DIR\|dirname "\${BASH_SOURCE' bin/*.sh
+```
