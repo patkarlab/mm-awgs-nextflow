@@ -108,3 +108,7 @@ script.log
 report_*/
 report_*.zip
 versions.yml
+
+# Liftover chains (download externally)
+*.chain
+*.chain.gz
