@@ -72,7 +72,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 
-__version__ = "0.4.0"
+__version__ = "0.5.0"
 # [dictionary-token-matching applied]
 # [cytoband-partner-annotation applied]
 
@@ -337,6 +337,41 @@ def load_gene_model(path: Optional[Path]) -> List[PanelRegion]:
     return load_panel(Path(path))
 
 
+def load_ig_segments(path: Optional[Path]) -> List[PanelRegion]:
+    """Immunoglobulin locus sub-regions: C/switch, J, D, V.
+
+    Optional. Built by bin/build_ig_segments.py from the RefSeq GFF, so the
+    boundaries are read off the annotation rather than asserted; they move
+    between assemblies and hardcoding one would make the rule wrong on the
+    next reference.
+    """
+    if path is None or not Path(str(path)).is_file():
+        return []
+    return load_panel(Path(path))
+
+
+def ig_region_for(chrom, pos, segments) -> str:
+    """Which Ig sub-region this breakpoint falls in, or "".
+
+    Position within the locus carries mechanistic information the coordinate
+    alone does not. Primary translocations in plasma cell neoplasms arise
+    from errors of class-switch recombination, which acts at the switch
+    regions, so they break in C/switch or near J. The V array is 121
+    near-identical segments over 940 kb where V(D)J and somatic
+    hypermutation act physiologically and where reads mismap.
+
+    Reported, never filtered on. A V-array breakend with an off-panel
+    partner is very likely mismapping, but this column says where the
+    breakend is and leaves the judgement to the reader.
+    """
+    best = None
+    for r in segments:
+        if r.chrom == chrom and pos is not None and r.start <= pos < r.end:
+            if best is None or (r.end - r.start) < (best.end - best.start):
+                best = r
+    return best.name if best else ""
+
+
 def gene_for(chrom, pos, model) -> Optional[str]:
     """Tightest gene-model feature containing this coordinate, or None.
 
@@ -542,20 +577,30 @@ def anchor_hits(anchors, label_a, label_b, dist_a, dist_b) -> List[dict]:
     discard the events the BCR windows exist to capture. The distance is
     still reported on every row.
     """
-    if label_a and label_b and label_a == label_b:
-        return []
-    hits, seen = [], set()
+    by_side = []
     for label, dist in ((label_a, dist_a), (label_b, dist_b)):
-        if not label:
-            continue
-        for tok in _norm_tokens(label):
+        side = {}
+        for tok in _norm_tokens(label or ""):
             row = anchors.get(tok)
-            if not row or row["anchor"] in seen:
+            if not row:
                 continue
             policy = (row.get("dist_policy") or "body").strip().lower()
             if policy != "interval" and dist not in (0, None):
                 continue
-            seen.add(row["anchor"])
+            side[row["anchor"]] = row
+        by_side.append(side)
+
+    # An anchor triggered by BOTH sides is an intra-locus event and fires
+    # nothing. Comparing anchors rather than labels is what makes this
+    # correct: IGLL5 lies inside the IGL locus and both resolve to the same
+    # anchor row, so an intra-IGL duplication reads as IGLL5 :: IGL and a
+    # label-equality test lets it through.
+    both = set(by_side[0]) & set(by_side[1])
+    hits = []
+    for side in by_side:
+        for name, row in side.items():
+            if name in both or any(h["anchor"] == name for h in hits):
+                continue
             hits.append(row)
     return hits
 
@@ -666,7 +711,7 @@ def characterize_side(chrom, pos, region, cytobands, gene_model=None):
 
 
 def annotate(records, panel, dictionary, anchors, sample, cytobands,
-             gene_model=None):
+             gene_model=None, ig_segments=None):
     out = []
     for r in records:
         side_a = region_for(r.chrom, r.pos, panel)
@@ -678,6 +723,9 @@ def annotate(records, panel, dictionary, anchors, sample, cytobands,
             r.chrom, r.pos, side_a, cytobands, gene_model)
         gene_b, src_b, band_b = characterize_side(
             r.mate_chrom, r.mate_pos, side_b, cytobands, gene_model)
+
+        ig_a = ig_region_for(r.chrom, r.pos, ig_segments or [])
+        ig_b = ig_region_for(r.mate_chrom, r.mate_pos, ig_segments or [])
 
         dist_a = dist_to_gene(r.chrom, r.pos, gene_a, gene_model)
         dist_b = dist_to_gene(r.mate_chrom, r.mate_pos, gene_b, gene_model)
@@ -730,6 +778,8 @@ def annotate(records, panel, dictionary, anchors, sample, cytobands,
             "gene_b_source":  src_b,
             "gene_a_dist":    "" if dist_a is None else str(dist_a),
             "gene_b_dist":    "" if dist_b is None else str(dist_b),
+            "ig_region_a":    ig_a,
+            "ig_region_b":    ig_b,
             "band_a":         band_a or "",
             "band_b":         band_b or "",
             "known_mm_pair":  hit.get("name", "") if hit else "",
@@ -753,7 +803,7 @@ COLUMNS = [
     "sample", "sv_id", "sv_type", "filter",
     "chrom_a", "pos_a", "gene_a", "chrom_b", "pos_b", "gene_b",
     "gene_a_source", "gene_b_source", "gene_a_dist", "gene_b_dist",
-    "band_a", "band_b",
+    "ig_region_a", "ig_region_b", "band_a", "band_b",
     "known_mm_pair", "entity", "tier", "known_freq", "match_quality",
     "anchor", "anchor_class", "reportable", "dict_notes",
     "callers", "n_callers", "supp_vec", "support_reads",
@@ -775,6 +825,10 @@ def main() -> int:
                          "measuring its distance to the gene it is named "
                          "after. Optional; without it labels come from the "
                          "panel interval and the distance columns stay empty.")
+    ap.add_argument("--ig-segments", default=None, type=Path,
+                    help="Ig locus sub-regions (C/switch, J, D, V) built by "
+                         "bin/build_ig_segments.py. Optional; adds "
+                         "ig_region_a/ig_region_b. Reported, not filtered on.")
     ap.add_argument("--anchors", default=None, type=Path,
                     help="Promiscuous loci reported whatever the partner. "
                          "Optional; without it only dictionary-named pairs "
@@ -792,17 +846,19 @@ def main() -> int:
     dictionary = load_dictionary(args.dictionary)
     anchors = load_anchors(args.anchors)
     gene_model = load_gene_model(args.gene_model)
+    ig_segments = load_ig_segments(args.ig_segments)
     cytobands = load_cytobands(args.cytoband_bed)
     excl = load_excluded_junctions(args.excluded_junctions)
     records = parse_vcf(args.vcf)
 
     sys.stderr.write(
         f"panel {len(panel)} regions | gene model {len(gene_model)} features | "
+        f"ig segments {len(ig_segments)} | "
         f"dictionary {len(dictionary)} pairs | anchors {len(anchors)} tokens | "
         f"exclusions {len(set(k[0] for k in excl))} chromosome pair(s)\n")
 
     rows = annotate(records, panel, dictionary, anchors, args.sample,
-                    cytobands, gene_model)
+                    cytobands, gene_model, ig_segments)
 
     keep, dropped = [], []
     for r in rows:

@@ -19,6 +19,8 @@ process ANNOTATE_MM_TRANSLOCATIONS {
     // dropped, which is the shipped default.
     def gene_model = params.gene_model_t2t
         ? "--gene-model ${params.gene_model_t2t}" : ''
+    def ig_segments = params.ig_segments_t2t
+        ? "--ig-segments ${params.ig_segments_t2t}" : ''
     def anchors = params.mm_translocation_anchors
         ? "--anchors ${params.mm_translocation_anchors}" : ''
     def excluded = params.mm_excluded_junctions
@@ -31,6 +33,7 @@ process ANNOTATE_MM_TRANSLOCATIONS {
         --dictionary ${params.mm_translocation_dict} \\
         ${gene_model} \\
         ${anchors} \\
+        ${ig_segments} \\
         ${excluded} \\
         --sample ${meta.id} \\
         --output ${meta.id}.mm_annotated.tsv
