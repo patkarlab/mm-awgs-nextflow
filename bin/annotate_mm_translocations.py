@@ -72,7 +72,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 
-__version__ = "0.5.0"
+__version__ = "0.6.0"
 # [dictionary-token-matching applied]
 # [cytoband-partner-annotation applied]
 
@@ -606,6 +606,103 @@ def anchor_hits(anchors, label_a, label_b, dist_a, dist_b) -> List[dict]:
 
 
 # -----------------------------------------------------------------------------
+# Panel of normals
+# -----------------------------------------------------------------------------
+# The PoN is a CSV whose column meanings depend on SVTYPE, which is why
+# matching against it has to be schema-aware:
+#
+#   chrom_a, pos_a, chrom_b, pos_b, ?, ?, svtype, frequency
+#
+#   DEL/DUP/INV  pos_b is a real coordinate on chrom_b
+#   BND          pos_b repeats pos_a; the far breakend position is not carried
+#   INS          pos_b holds the inserted length, not a position
+#
+# Comparing pos_b unconditionally therefore rejects every BND match and
+# compares a length against a coordinate for every INS. Inter-chromosomal
+# junctions are matched on chrom_a, pos_a and chrom_b only.
+PON_BUCKET = 100000
+
+
+def load_pon(path: Optional[Path]):
+    """Index a Severus-style panel of normals by (chrom, position bucket).
+
+    A linear scan would be O(records x PoN entries); the PoN runs to
+    hundreds of thousands of rows, so it is bucketed. Both orientations are
+    stored, so a junction matches whichever way round it was called.
+    """
+    index: Dict[Tuple[str, int], list] = {}
+    if path is None or not Path(str(path)).is_file():
+        return index
+    n = 0
+    with open(path) as fh:
+        for line in fh:
+            f = line.rstrip("\n").split(",")
+            if len(f) < 8:
+                continue
+            try:
+                ca, pa, cb, pb = f[0], int(f[1]), f[2], int(f[3])
+                svtype, freq = f[6].strip().upper(), float(f[7])
+            except ValueError:
+                continue
+            n += 1
+            for (xa, xpa, xb, xpb) in ((ca, pa, cb, pb), (cb, pb, ca, pa)):
+                index.setdefault((xa, xpa // PON_BUCKET), []).append(
+                    (xpa, xb, xpb, svtype, freq))
+    sys.stderr.write(f"panel of normals: {n} entries indexed from {path}\n")
+    return index
+
+
+def pon_lookup(index, chrom_a, pos_a, chrom_b, pos_b, sv_type, tol):
+    """Highest PoN frequency matching this junction, or None.
+
+    Same-chromosome events compare both breakpoints, because the PoN
+    carries a real pos_b for them. Inter-chromosomal events compare the
+    near breakpoint and the partner chromosome only. An insertion is
+    matched on its own breakpoint alone.
+    """
+    if not index or chrom_a is None or pos_a is None:
+        return None
+    inter = chrom_b is not None and chrom_b != chrom_a
+    want_bnd = inter or sv_type in ("BND", "TRA")
+    # Same-chromosome events are not matched. The PoN holds 590k DEL and
+    # 696k INS entries, so within any workable tolerance almost every small
+    # indel in a 30 Mb panel finds a neighbour: on one validation sample
+    # 97.8% of DEL and 97.7% of INS matched, against 10.5% of TRA. That is
+    # coincidence at scale rather than germline identity, and it would drop
+    # two thirds of the callset. The 1,962 BND entries are sparse enough for
+    # a coordinate match to mean something.
+    if not want_bnd:
+        return None
+    # Same-chromosome events are not matched. The PoN holds 590k DEL and
+    # 696k INS entries, so within any workable tolerance almost every small
+    # indel in a 30 Mb panel finds a neighbour: on one validation sample
+    # 97.8% of DEL and 97.7% of INS matched, against 10.5% of TRA. That is
+    # coincidence at scale rather than germline identity, and it would drop
+    # two thirds of the callset. The 1,962 BND entries are sparse enough for
+    # a coordinate match to mean something.
+    if not want_bnd:
+        return None
+    best = None
+    lo = (pos_a - tol) // PON_BUCKET
+    hi = (pos_a + tol) // PON_BUCKET
+    for b in range(lo, hi + 1):
+        for (xpa, xb, xpb, svtype, freq) in index.get((chrom_a, b), ()):
+            if abs(xpa - pos_a) > tol:
+                continue
+            if want_bnd:
+                if svtype != "BND" or xb != chrom_b:
+                    continue
+            else:
+                if svtype == "INS":
+                    pass                      # pos_b is a length; ignore it
+                elif xb != chrom_b or pos_b is None or abs(xpb - pos_b) > tol:
+                    continue
+            if best is None or freq > best[1]:
+                best = (svtype, freq)
+    return best
+
+
+# -----------------------------------------------------------------------------
 # Excluded junctions
 # -----------------------------------------------------------------------------
 def load_excluded_junctions(path: Optional[Path]) -> Dict[Tuple[str, str], list]:
@@ -668,6 +765,39 @@ def excluded_reason(excl, row) -> Optional[str]:
     return None
 
 
+def pon_reason(row, min_freq) -> Optional[str]:
+    """Why this junction is dropped as germline, or None.
+
+    A dictionary-named or graded row is never dropped, on the same reasoning
+    as the exclusion list and with the same non-configurable override. A
+    named entity has cleared a higher bar than population frequency can
+    overturn, and pon_freq is still written on the row, so a conflict
+    between the two is visible rather than silently resolved.
+
+    Threshold rather than presence. The PoN records how often a junction is
+    seen across the 1000 Genomes panel; an entry at 0.99 is effectively
+    fixed in the population and cannot be somatic, while a low-frequency
+    entry says only that someone else has also seen it.
+    """
+    if min_freq is None or min_freq <= 0:
+        return None
+    if (row.get("known_mm_pair") or "").strip():
+        return None
+    if (row.get("tier") or "").strip():
+        return None
+    f = (row.get("pon_freq") or "").strip()
+    if not f:
+        return None
+    try:
+        v = float(f)
+    except ValueError:
+        return None
+    if v < min_freq:
+        return None
+    return (f"panel of normals {row.get('pon_svtype', '')} at frequency "
+            f"{v:.4f} (>= {min_freq})")
+
+
 # -----------------------------------------------------------------------------
 # Annotation
 # -----------------------------------------------------------------------------
@@ -711,7 +841,7 @@ def characterize_side(chrom, pos, region, cytobands, gene_model=None):
 
 
 def annotate(records, panel, dictionary, anchors, sample, cytobands,
-             gene_model=None, ig_segments=None):
+             gene_model=None, ig_segments=None, pon=None, pon_tol=2500):
     out = []
     for r in records:
         side_a = region_for(r.chrom, r.pos, panel)
@@ -749,6 +879,9 @@ def annotate(records, panel, dictionary, anchors, sample, cytobands,
                                  f"{hit.get('name', 'pair')}; entity removed")
                     hit, quality = None, "below_span"
 
+        pon_hit = pon_lookup(pon, r.chrom, r.pos, r.mate_chrom, r.mate_pos,
+                             r.sv_type, pon_tol)
+
         hits = anchor_hits(anchors, gene_a, gene_b, dist_a, dist_b)
 
         # Reportable when the dictionary names it or it touches an anchor.
@@ -780,6 +913,8 @@ def annotate(records, panel, dictionary, anchors, sample, cytobands,
             "gene_b_dist":    "" if dist_b is None else str(dist_b),
             "ig_region_a":    ig_a,
             "ig_region_b":    ig_b,
+            "pon_freq":       f"{pon_hit[1]:.4f}" if pon_hit else "",
+            "pon_svtype":     pon_hit[0] if pon_hit else "",
             "band_a":         band_a or "",
             "band_b":         band_b or "",
             "known_mm_pair":  hit.get("name", "") if hit else "",
@@ -804,6 +939,7 @@ COLUMNS = [
     "chrom_a", "pos_a", "gene_a", "chrom_b", "pos_b", "gene_b",
     "gene_a_source", "gene_b_source", "gene_a_dist", "gene_b_dist",
     "ig_region_a", "ig_region_b", "band_a", "band_b",
+    "pon_freq", "pon_svtype",
     "known_mm_pair", "entity", "tier", "known_freq", "match_quality",
     "anchor", "anchor_class", "reportable", "dict_notes",
     "callers", "n_callers", "supp_vec", "support_reads",
@@ -833,6 +969,18 @@ def main() -> int:
                     help="Promiscuous loci reported whatever the partner. "
                          "Optional; without it only dictionary-named pairs "
                          "are reportable.")
+    ap.add_argument("--pon", default=None, type=Path,
+                    help="Severus-style panel of normals CSV. Adds pon_freq "
+                         "and pon_svtype, and drops junctions at or above "
+                         "--pon-min-freq. A dictionary-named or graded row is "
+                         "never dropped.")
+    ap.add_argument("--pon-min-freq", type=float, default=0.10,
+                    help="Population frequency at or above which a junction "
+                         "is dropped as germline [0.10]. Set to 0 to annotate "
+                         "without dropping.")
+    ap.add_argument("--pon-tol", type=int, default=2500,
+                    help="Bases a breakpoint may differ from a PoN entry and "
+                         "still match [2500].")
     ap.add_argument("--excluded-junctions", default=None, type=Path,
                     help="Coordinate-identical artefact junctions to drop. "
                          "A dictionary-named or graded row is never dropped.")
@@ -849,6 +997,7 @@ def main() -> int:
     ig_segments = load_ig_segments(args.ig_segments)
     cytobands = load_cytobands(args.cytoband_bed)
     excl = load_excluded_junctions(args.excluded_junctions)
+    pon = load_pon(args.pon)
     records = parse_vcf(args.vcf)
 
     sys.stderr.write(
@@ -858,11 +1007,17 @@ def main() -> int:
         f"exclusions {len(set(k[0] for k in excl))} chromosome pair(s)\n")
 
     rows = annotate(records, panel, dictionary, anchors, args.sample,
-                    cytobands, gene_model, ig_segments)
+                    cytobands, gene_model, ig_segments,
+                    pon, args.pon_tol)
 
     keep, dropped = [], []
+    n_pon = 0
     for r in rows:
         why = excluded_reason(excl, r)
+        if not why:
+            why = pon_reason(r, args.pon_min_freq)
+            if why:
+                n_pon += 1
         (dropped if why else keep).append((r, why))
 
     with open(args.output, "w", newline="") as fh:
@@ -872,8 +1027,9 @@ def main() -> int:
         w.writerows([r for r, _ in keep])
 
     if dropped:
-        sys.stderr.write(f"dropped {len(dropped)} junction(s) on the "
-                         f"exclusion list:\n")
+        sys.stderr.write(
+            f"dropped {len(dropped)} junction(s): {len(dropped) - n_pon} on "
+            f"the exclusion list, {n_pon} as germline by frequency\n")
         seen = set()
         for r, why in dropped:
             k = (r["chrom_a"], r["pos_a"], r["chrom_b"], r["pos_b"])
