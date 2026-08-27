@@ -21,6 +21,16 @@ process CLAIR3_PHASED {
     //     containing pileup.pt and full_alignment.pt
     // We bind-mount /goast into the container so host paths are also valid
     // container paths.
+    // Adaptive sampling leaves off-panel coverage at the roughly 1x of
+    // rejected reads, and nothing downstream reads calls from there:
+    // BAF_LOH_SCREEN takes the panel BED and emits one row per panel
+    // region per sample, so off-panel sites are parsed and discarded.
+    // Restricting the calling region is a compute saving with no change
+    // to any consumed output. Set clair3_restrict_to_panel = false to
+    // call genome-wide again.
+    def clair3_bed = params.clair3_restrict_to_panel \
+        ? "--bed_fn=${params.panel_bed_hg38}" \
+        : ""
     def bundled_models = ['r1041_e82_400bps_sup_v500']
     def is_bundled     = bundled_models.contains(params.clair3_model_name)
     def model_path     = is_bundled \
@@ -54,8 +64,9 @@ process CLAIR3_PHASED {
         /opt/bin/run_clair3.sh \\
             --bam_fn=${bam} \\
             --ref_fn=${params.hg38_fasta} \\
+            ${clair3_bed} \\
             --output=clair3_out \\
-            --threads=${params.clair3_threads} \\
+            --threads=${task.cpus} \\
             --platform=${params.clair3_platform} \\
             --model_path=${model_path} \\
             --enable_phasing \\

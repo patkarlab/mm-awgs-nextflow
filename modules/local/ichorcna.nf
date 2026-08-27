@@ -30,9 +30,21 @@ process ICHORCNA {
     READCOUNTER=${params.ichorcna_env_prefix}/bin/readCounter
     RSCRIPT=${params.ichorcna_env_prefix}/bin/Rscript
 
-    # Build the exclude regions file (centromeres + panel mask)
+    # Build the exclude regions file (centromeres + mapping failures + panel
+    # mask). The shipped centromere_acen file covers centromeres and
+    # acrocentric arms only. A handful of bins elsewhere can carry corrected
+    # log2 values no copy state can produce, and because they hold
+    # essentially all the genome-wide variance the HMM cannot fit any
+    # tumour fraction that accommodates them, smoothing every chromosome
+    # into a single neutral segment. The mask is optional: if the file is
+    # absent or empty the run proceeds with centromeres and panel alone.
     {
         awk -v OFS='\\t' '!/^#/ && NF>=3 {print \$1, \$2, \$3}' ${params.ichorcna_centromere}
+        if [ -s "${params.ichorcna_exclude}" ]; then
+            awk -v OFS='\\t' '!/^#/ && NF>=3 {print \$1, \$2, \$3}' ${params.ichorcna_exclude}
+        else
+            echo "NOTE: no ichorCNA mapping-failure mask at ${params.ichorcna_exclude}" >&2
+        fi
         awk -v OFS='\\t' '!/^#/ && NF>=3 {print \$1, \$2, \$3}' ${params.panel_bed_hg38}
     } | sort -k1,1 -k2,2n > exclude.txt
 

@@ -1,0 +1,49 @@
+# Regions excluded from ichorCNA binning, beyond centromeres.
+#
+# ichorCNA's shipped centromere_acen file covers centromeres and acrocentric
+# arms only. Bins outside those regions can still carry corrected log2 values
+# no copy state can produce - depth ratios of one in hundreds or thousands -
+# because they are mapping failures rather than copy-number events: the MHC,
+# where hg38 carries alt haplotypes; subtelomeres; and known blacklist
+# intervals.
+#
+# The effect is not subtle when it occurs. A handful of such bins can carry
+# essentially all the genome-wide variance, and the HMM cannot fit any tumour
+# fraction that accommodates them, so every chromosome is smoothed into a
+# single neutral segment and a real arm-level event is reported as neutral at
+# tumour fraction 0.
+#
+# PROVENANCE. These intervals were identified on the acute-leukaemia cohort in
+# the sibling pipeline, not on this one. They are properties of the hg38
+# assembly rather than of any disease or cohort, which is why they carry over,
+# but the list has not been verified against this project's samples. Treat it
+# as a starting point and confirm it before relying on the segment calls.
+#
+# To re-derive from this cohort's own data, rank the 1 Mb bins by corrected
+# log2 and inspect the tail:
+#
+#   awk 'NR>1 && $NF != "NA"' results/hg38/calls/ichorcna/*/*.cna.seg \
+#     | sort -k5,5g | head -40
+#
+# A bin whose corrected log2 sits below about -1.0 while the interquartile
+# range of the genome is a few hundredths is not a deletion. Add it here, or
+# remove an interval below that this cohort does not reproduce.
+#
+# Concatenated with the centromere file and the panel BED in
+# modules/local/ichorcna.nf. Coordinates are hg38, chr-prefixed to match.
+#
+# Ploidy estimation is deliberately left enabled in this pipeline. Fixing
+# ploidy at 2 is correct for a disease whose genome is near-diploid, but
+# hyperdiploidy is a defining event in myeloma and constraining the fit would
+# discard it. Masking these bins is what stabilises the fit here, not
+# narrowing the ploidy search.
+#
+# Chr	Start	End
+chr6	28000000	34000000
+chr15	28000000	32000000
+chr8	1	2000000
+chr17	1	2000000
+chr1	244000000	246000000
+chr4	67000000	69000000
+chr6	127000000	129000000
+chr8	38000000	40000000
