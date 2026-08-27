@@ -87,12 +87,25 @@ def main():
     ap.add_argument("--sample-groups", default=None, type=Path,
                     help="Identifiers belonging to one patient, one group per "
                          "line. Grouped identifiers count once.")
+    ap.add_argument("--include-intrachromosomal", action="store_true",
+                    help="Also consider same-chromosome events. Off by "
+                         "default: they dominate the callset and recurrent "
+                         "small indels are a population-frequency problem "
+                         "rather than one to enumerate by coordinate.")
+    ap.add_argument("--partner-tol", type=int, default=None,
+                    help="Tolerance on the side that clusters tightly, when "
+                         "the other side is dispersed. Defaults to "
+                         "--tolerance. An Ig breakend scatters over the "
+                         "locus while its partner does not, so requiring "
+                         "both sides within one tolerance splits a single "
+                         "junction into several proposals.")
     ap.add_argument("--output", required=True, type=Path)
     ap.add_argument("--version", action="version",
                     version=f"%(prog)s {__version__}")
     args = ap.parse_args()
 
     groups = load_groups(args.sample_groups)
+    include_intra = args.include_intrachromosomal
 
     # Canonical orientation, so a reciprocal mate lands in the same bucket.
     obs = defaultdict(list)
@@ -107,6 +120,15 @@ def main():
                     protected += 1
                     continue
                 ca, cb = r.get("chrom_a"), r.get("chrom_b")
+                # Inter-chromosomal only, by default. Same-chromosome DEL
+                # and INS dominate the callset: on one cohort they were
+                # 8868 of 9735 rows and produced 1019 proposals where 42
+                # were junctions. Recurrent small indels at shared
+                # coordinates are germline variation and alignment noise,
+                # which is a population-frequency problem, not something to
+                # enumerate by coordinate.
+                if not include_intra and ca == cb:
+                    continue
                 try:
                     pa, pb = int(r.get("pos_a")), int(r.get("pos_b"))
                 except (TypeError, ValueError):
@@ -119,6 +141,7 @@ def main():
                 obs[(ca, cb)].append((pa, pb, groups.get(sid, sid), sid,
                                       r.get("gene_a", ""), r.get("gene_b", "")))
 
+    ptol = args.partner_tol if args.partner_tol is not None else args.tolerance
     proposals = []
     for (ca, cb), pts in obs.items():
         pts.sort()
@@ -132,9 +155,21 @@ def main():
                 if used[j]:
                     continue
                 qa, qb, g2, sid2, ga2, gb2 = pts[j]
-                if qa - pa > args.tolerance:
+                # The scan is sorted on side a, so it can stop once side
+                # a is out of range -- but the range is the wider of the
+                # two tolerances, since a match may allow side a to be
+                # the dispersed one.
+                if qa - pa > max(args.tolerance, ptol):
                     break
-                if abs(qa - pa) <= args.tolerance and abs(qb - pb) <= args.tolerance:
+                # Asymmetric. One side may scatter across a locus while
+                # the other is tight: six IGH proposals in one run were a
+                # single junction whose partner clustered within 1.3 kb
+                # while the IGH side spread over 640 kb. A match needs one
+                # side within --partner-tol and the other within
+                # --tolerance, either way round.
+                da, db = abs(qa - pa), abs(qb - pb)
+                if ((da <= ptol and db <= args.tolerance) or
+                        (da <= args.tolerance and db <= ptol)):
                     cluster.append(pts[j])
                     used[j] = True
             indep = {c[2] for c in cluster}

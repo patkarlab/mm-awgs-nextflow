@@ -259,6 +259,98 @@ def cluster_tra(tra_rows, max_dist):
     return clusters
 
 
+def arm_of(band, fallback_chrom):
+    """Chromosome arm as 'chr6p', parsed from the cytoband alone.
+
+    The band names its own chromosome, so it must not be combined with a
+    chromosome taken from elsewhere: canonical_ends sorts a junction's ends by
+    chromosome, which swaps them relative to band_a/band_b on a reciprocal
+    mate. Falls back to the bare chromosome when no band is available, which
+    only loosens grouping.
+    """
+    m = re.match(r"^([0-9]+|[XY])([pq])", (band or "").strip())
+    return f"chr{m.group(1)}{m.group(2)}" if m else str(fallback_chrom)
+
+
+def arm_pair_union(clusters, max_spread):
+    """Group junctions joining the same two chromosome arms into one event.
+
+    Positional clustering asks whether two calls are the same breakpoint. This
+    asks whether they are the same rearrangement, which is what a report needs.
+    Imperfect double-strand break repair leaves a single translocation with
+    several junctions tens of kilobases apart, beyond any breakpoint tolerance.
+
+    Rule: cluster translocations sharing common arms at both ends (LINX,
+    Hartwig, bioRxiv 2020.12.03.410860). Bound: 100 kb, after Malhotra et al.,
+    Genome Res 2013;23:762. Disease- and panel-agnostic; arms need no gene
+    annotation, so a breakend resolving to a cytoband groups as readily as one
+    on a named gene.
+    """
+    by_arms = {}
+    out = {}
+    for key, members in clusters.items():
+        arms = set()
+        for m in members:
+            e1, e2 = m["_ends"]
+            # Bands are read from the row, chromosomes from the sorted ends
+            # only as a fallback. A reciprocal mate carries the same two bands
+            # in the opposite order, so the set is identical either way.
+            arms.add(arm_of(m.get("band_a"), e1[0]))
+            arms.add(arm_of(m.get("band_b"), e2[0]))
+        if len(arms) != 2:
+            # Not a clean two-arm junction: intrachromosomal, or already a
+            # multi-arm cluster. Leave it as the earlier passes resolved it.
+            out[key] = members
+            continue
+        by_arms.setdefault(tuple(sorted(arms)), []).append((key, members))
+
+    for arms, group in by_arms.items():
+        if len(group) == 1:
+            k, m = group[0]
+            out[k] = m
+            continue
+
+        # Single-linkage rather than one span across the group, so an
+        # unrelated junction between the same arms cannot inflate the span and
+        # block a real merge.
+        reps = []
+        for k, ms in group:
+            reps.append((k, ms,
+                         min(m["_ends"][0][1] for m in ms),
+                         min(m["_ends"][1][1] for m in ms)))
+        n = len(reps)
+        parent = list(range(n))
+
+        def find(x):
+            while parent[x] != x:
+                parent[x] = parent[parent[x]]
+                x = parent[x]
+            return x
+
+        for i in range(n):
+            for j in range(i + 1, n):
+                if abs(reps[i][2] - reps[j][2]) <= max_spread and \
+                   abs(reps[i][3] - reps[j][3]) <= max_spread:
+                    parent[find(i)] = find(j)
+
+        linked = {}
+        for i in range(n):
+            linked.setdefault(find(i), []).append(i)
+
+        for idxs in linked.values():
+            members = [m for i in idxs for m in reps[i][1]]
+            key = reps[idxs[0]][0]
+            out[key] = members
+            if len(idxs) > 1:
+                pa = [m["_ends"][0][1] for m in members]
+                pb = [m["_ends"][1][1] for m in members]
+                sys.stderr.write(
+                    f"  arm-pair merge: {arms[0]}::{arms[1]}  "
+                    f"{len(idxs)} clusters -> 1 event, {len(members)} junction(s), "
+                    f"breakpoint spread {max(pa)-min(pa):,} / {max(pb)-min(pb):,} bp\n")
+    return out
+
+
 def ig_aware_union(clusters, ig_partner_tol):
     """Second pass over positional clusters: collapse partner::anchor translocations
     whose anchor-side breakpoints are scattered across a dispersed anchor (Ig
@@ -317,7 +409,8 @@ def ig_aware_union(clusters, ig_partner_tol):
     return merged
 
 
-def process_file(path, outdir, max_dist, keep_all_sv, ig_partner_tol):
+def process_file(path, outdir, max_dist, keep_all_sv, ig_partner_tol,
+                 event_max_spread=100000):
     stem = os.path.basename(path)
     # default: translocations-only file; --keep-all-sv: full table w/ TRA merged
     suffix = ".sv_tra_merged.tsv" if keep_all_sv else ".translocations.tsv"
@@ -347,6 +440,7 @@ def process_file(path, outdir, max_dist, keep_all_sv, ig_partner_tol):
     tra_rows = [rows[i] for i in tra_idx]
     clusters = cluster_tra(tra_rows, max_dist)
     clusters = ig_aware_union(clusters, ig_partner_tol)
+    clusters = arm_pair_union(clusters, event_max_spread)
 
     # Map each TRA row's original position -> its cluster's representative output,
     # emitted once at the earliest member position.
@@ -394,6 +488,12 @@ def main():
     ap.add_argument("-i", "--input", required=True, nargs="+", help="One or more *.mm_annotated.tsv files.")
     ap.add_argument("-o", "--outdir", default=None, help="Output dir (default: alongside each input).")
     ap.add_argument("--max-dist", type=int, default=100, help="Max bp between breakpoints to unite non-Ig pairs (default 100).")
+    ap.add_argument("--event-max-spread", type=int, default=100000,
+                    help="Collapse junctions joining the same two chromosome "
+                         "arms into one event when their breakpoints span no "
+                         "more than this on both sides [100000]. LINX's "
+                         "shared-arms rule with the 100 kb bound from Malhotra "
+                         "et al., Genome Res 2013. Set to 0 to disable.")
     ap.add_argument("--ig-partner-tol", type=int, default=2000,
                     help="bp tolerance on the partner side when collapsing partner::Ig "
                          "translocations across the Ig locus (default 1000).")
@@ -403,7 +503,8 @@ def main():
         if not os.path.isfile(path):
             sys.stderr.write(f"ERROR: not found: {path}\n"); sys.exit(1)
         outdir = args.outdir or os.path.dirname(os.path.abspath(path))
-        process_file(path, outdir, args.max_dist, args.keep_all_sv, args.ig_partner_tol)
+        process_file(path, outdir, args.max_dist, args.keep_all_sv,
+                     args.ig_partner_tol, args.event_max_spread)
 
 
 if __name__ == "__main__":

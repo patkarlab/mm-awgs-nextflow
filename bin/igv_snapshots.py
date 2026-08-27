@@ -103,6 +103,13 @@ TRANSLOCATION_INFO_COLUMNS = [
     "gene_a",
     "gene_b",
     "known_mm_pair",
+    "entity",
+    "tier",
+    "match_quality",
+    "anchor",
+    "reportable",
+    "ig_region_a",
+    "ig_region_b",
     "known_freq",
     "callers",
     "n_callers",
@@ -361,14 +368,25 @@ def select_events(rows, sv_types, interchromosomal_only, min_callers, max_events
         "excluded_intrachromosomal": 0,
         "excluded_callers": 0,
         "excluded_cap": 0,
+        "kept_graded": 0,
     }
 
     selected = []
+    graded = []
     for row in rows:
         sv_type = (row.get("sv_type") or "").strip().upper()
         counts["by_type"][sv_type or "(blank)"] = (
             counts["by_type"].get(sv_type or "(blank)", 0) + 1
         )
+
+        # A graded row bypasses every filter here and is exempt from the
+        # cap. A defining call in this assay can be intrachromosomal, so a
+        # type-and-chromosome filter drops exactly the events a reader needs
+        # the evidence for. Graded rows are a handful per sample.
+        if (row.get("tier") or "").strip():
+            counts["kept_graded"] += 1
+            graded.append(row)
+            continue
 
         if wanted and sv_type not in wanted:
             counts["excluded_type"] += 1
@@ -401,6 +419,9 @@ def select_events(rows, sv_types, interchromosomal_only, min_callers, max_events
         counts["excluded_cap"] = len(selected) - max_events
         selected = selected[:max_events]
 
+    # Graded rows lead and are never capped away.
+    selected = graded + selected
+
     counts["selected"] = len(selected)
     return selected, counts
 
@@ -416,6 +437,7 @@ def report_selection(counts, sv_types, interchromosomal_only, min_callers):
     eprint("  by sv_type               : %s" % by_type)
     eprint("  keeping sv_type          : %s" % sv_types)
     eprint("  interchromosomal only    : %s" % interchromosomal_only)
+    eprint("  kept, graded (bypass)    : %d" % counts.get("kept_graded", 0))
     eprint("  minimum callers          : %d" % min_callers)
     eprint("  dropped, wrong sv_type   : %d" % counts["excluded_type"])
     eprint("  dropped, same chromosome : %d" % counts["excluded_intrachromosomal"])
