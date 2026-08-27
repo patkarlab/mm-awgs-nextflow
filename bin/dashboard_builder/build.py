@@ -235,6 +235,7 @@ def collect_sample_context(sample_dir, build_time, subdir="",
         "mobidetails": {},   # chr:pos:ref:alt -> {url, mobidetails_id, ...} (empty unless --annotate-mobidetails)
         "oncokb": {},        # chr:pos:ref:alt -> OncoKB annotation dict (empty unless --annotate-oncokb)
         "cancervar": {},     # chr:pos:ref:alt -> CancerVar annotation dict (empty unless --annotate-cancervar)
+        "ichor_sol_pages": [],
         "files": {"fastp": None, "igv_report": None, "existing_dashboard": None, "listing": []},
     }
 
@@ -310,6 +311,24 @@ def collect_sample_context(sample_dir, build_time, subdir="",
         logging.warning("[%s] cnv parse failed: %s", sample, exc)
         ctx["cnv"] = {"clinical_table": None, "scatter_png": None, "diagram_pdf": None,
                       "per_chrom_pngs": [], "per_gene_pngs": []}
+
+    # --- ichorCNA all-solution pages ---
+    # Rasterised by the bundle script. ichorCNA emits every ploidy and
+    # normal-fraction solution into one multi-page PDF, and a PDF page cannot
+    # be ticked into the Reporting tab. On this data the top-likelihood
+    # solution is often within one log-likelihood unit of two others, so the
+    # automatic pick is not authoritative and the reviewer needs to choose.
+    sol_dir = effective_dir / "cnv" / "all_sols"
+    if not sol_dir.is_dir():
+        sol_dir = effective_dir / "all_sols"
+    pages = []
+    if sol_dir.is_dir():
+        for img in sorted(sol_dir.glob(f"{sample}.sol*.png")):
+            n = "".join(ch for ch in img.stem.split("sol")[-1] if ch.isdigit())
+            pages.append({"name": n or img.stem,
+                          "label": f"Solution page {n or '?'}",
+                          "path": str(img.relative_to(effective_dir))})
+    ctx["ichor_sol_pages"] = pages
 
     # --- IGV lookup + idempotent hash-router injection ---
     # The hash-router script lets the parent dashboard select a variant by

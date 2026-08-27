@@ -109,6 +109,8 @@ workflow MM_AWGS {
         REPORT_BUNDLE(
             ready.collect().ifEmpty(['none']),
             file("${projectDir}/bin/build_report_bundle.sh"),
+            file(params.panel_bed_t2t,  checkIfExists: true),
+            file(params.panel_bed_hg38, checkIfExists: true),
             params.outdir,
             bundle_name
         )

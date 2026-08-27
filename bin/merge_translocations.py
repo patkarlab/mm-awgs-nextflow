@@ -46,6 +46,7 @@ Usage:
 import argparse
 import csv
 import os
+import re
 import sys
 
 CALLER_ORDER = {"Sniffles": 0, "CuteSV": 1, "Severus": 2, "nanomonsv": 3}
@@ -136,8 +137,24 @@ def first_nonempty(members, col):
     return ""
 
 
+def _named_ends(m):
+    """Count ends that landed on a named panel region. A cytoband is a
+    position, not a gene."""
+    n = 0
+    for col in ("gene_a", "gene_b"):
+        g = (m.get(col) or "").strip()
+        if g and not re.match(r"^[0-9XY]+[pq]\d", g):
+            n += 1
+    return n
+
+
 def _rep_key(m):
-    return (to_int(m.get("n_callers"), 0), to_int(m.get("support_reads"), 0))
+    # Named ends and a dictionary hit outrank support: the representative
+    # supplies the row's gene names, so choosing on support alone can
+    # collapse a named finding into an anonymous junction.
+    named = 1 if (m.get("known_mm_pair") or m.get("known_pair") or "").strip() else 0
+    return (_named_ends(m), named,
+            to_int(m.get("n_callers"), 0), to_int(m.get("support_reads"), 0))
 
 
 def merge_cluster(members):

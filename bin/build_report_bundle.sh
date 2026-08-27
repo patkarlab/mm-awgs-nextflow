@@ -185,6 +185,24 @@ for s in "${SAMPLES[@]}"; do
   copy_first "$d/cnv" "${s}.ichor_all_sols.pdf" "$s" -path '*ichor*' -name '*all_sols*.pdf'
   copy_first "$d/cnv" "${s}.ichor_params.txt"   "$s" -path '*ichor*' -name '*params.txt'
 
+  # ichorCNA emits every ploidy/normal-fraction solution into one multi-page
+  # PDF. A PDF page cannot be ticked, so the pages are rasterised here and the
+  # CNV tab renders them as selectable plot cards. That is what lets a reviewer
+  # choose the fit that is actually right for the sample: on this data the
+  # top-likelihood solution is often within one log-likelihood unit of two
+  # others, so the automatic pick is not authoritative.
+  if [[ -f "$d/cnv/${s}.ichor_all_sols.pdf" ]]; then
+    if command -v pdftoppm > /dev/null 2>&1; then
+      mkdir -p "$d/cnv/all_sols"
+      pdftoppm -png -r 110 "$d/cnv/${s}.ichor_all_sols.pdf" \
+               "$d/cnv/all_sols/${s}.sol" 2>/dev/null || true
+      n=$(find "$d/cnv/all_sols" -name "${s}.sol*.png" | wc -l)
+      echo "  + cnv/all_sols/ (${n} solution page(s) as selectable images)"
+    else
+      echo "  - (skipped) all-solution page images: pdftoppm not on PATH" >&2
+    fi
+  fi
+
   # QC: adaptive-sampling plots and per-region coverage.
   copy_first "$d/qc" "${s}.region_coverage.tsv" "$s" -name '*.region_coverage.tsv'
   copy_first "$d/qc" "${s}.region_coverage.png" "$s" -name '*.region_coverage.png'
@@ -282,6 +300,60 @@ if [[ "${BUNDLE_TAR:-0}" == "1" ]]; then
   echo "Tarball:     ${BUNDLE}.tar.gz"
   du -sh "${BUNDLE}.tar.gz"
 fi
+# ---------------------------------------------------------------------------
+# Alignments.
+#
+# The reports name a locus and a read count; reviewing either means opening the
+# alignment. Included by default so the bundle is self-sufficient rather than a
+# set of assertions the reader has to take on trust.
+#
+# Sliced, not whole-genome. A 20 h adaptive-sampling run is around 30 GB per
+# sample per reference, so three samples across both references is 180 GB and
+# the bundle stops being something anyone can receive. Almost all of that is
+# rejected off-target reads at about 1x that nothing called from and nobody
+# reviews. Sliced to the panel the same alignment is a few hundred megabytes
+# and still carries every read behind every call.
+#
+# Both references travel because the two tracks are not interchangeable:
+# rearrangements were called on T2T, SNVs and CNVs on hg38. Opening a call
+# against the wrong assembly gives coordinates that look plausible and are
+# wrong.
+#
+# BUNDLE_NO_BAMS=1 to skip. BUNDLE_BAM_REGIONS to narrow further, e.g.
+#   BUNDLE_BAM_REGIONS="chr11:69100000-69400000 chr14:99900000-100200000"
+if [[ -z "${BUNDLE_NO_BAMS:-}" ]]; then
+  if ! command -v samtools > /dev/null 2>&1; then
+    echo "WARNING: samtools not on PATH; alignments omitted from the bundle." >&2
+  else
+    for s in "${SAMPLES[@]}"; do
+      for bam in $(find "$RESULTS" -type f -name "${s}.t2t.bam" -o -type f -name "${s}.hg38.bam" 2>/dev/null); do
+        base="$(basename "$bam")"
+        case "$base" in
+          *.t2t.bam)  ref_bed="${PANEL_BED_T2T:-${SCRIPT_DIR}/../assets/aWGS_PCN_v7_t2t_chr.bed}" ;;
+          *.hg38.bam) ref_bed="${PANEL_BED_HG38:-${SCRIPT_DIR}/../assets/aWGS_PCN_v7_hg38.bed}" ;;
+          *) continue ;;
+        esac
+        mkdir -p "$BUNDLE/$s/bam"
+        dest="$BUNDLE/$s/bam/$base"
+        if [[ -n "${BUNDLE_BAM_REGIONS:-}" && "$base" == *.hg38.bam ]]; then
+          # Region strings are assembly-specific, so they are applied to hg38
+          # only. A T2T alignment falls back to its own BED rather than being
+          # sliced at hg38 coordinates.
+          # shellcheck disable=SC2086
+          samtools view -b -o "$dest" "$bam" ${BUNDLE_BAM_REGIONS}
+        elif [[ -f "$ref_bed" ]]; then
+          samtools view -b -L "$ref_bed" -o "$dest" "$bam"
+        else
+          echo "  - (missing) panel BED for $base: $ref_bed" >&2
+          continue
+        fi
+        samtools index "$dest"
+        echo "  + $s/bam/$base ($(du -h "$dest" | cut -f1), sliced)"
+      done
+    done
+  fi
+fi
+
 echo ""
 echo "Bundle tree: $BUNDLE/"
 du -sh "$BUNDLE"

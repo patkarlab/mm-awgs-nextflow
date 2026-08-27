@@ -27,7 +27,13 @@ process EMBED_REPORT_ASSETS {
     task.ext.when == null || task.ext.when
 
     script:
-    def embed_igv = params.report_embed_igv ?: 0
+    // Config has historically set this as a boolean flag and as an integer
+    // cap. Groovy refuses Boolean > Integer, which fails the pipeline at
+    // its final step after the compute has already been spent, so both
+    // forms are accepted here.
+    def embed_raw = params.report_embed_igv
+    def embed_igv = (embed_raw instanceof Boolean) ? (embed_raw ? 1000 : 0)
+                                                   : ((embed_raw ?: 0) as int)
     def igv_arg   = embed_igv > 0 ? "--embed-igv ${embed_igv}" : ""
     """
     set -euo pipefail
