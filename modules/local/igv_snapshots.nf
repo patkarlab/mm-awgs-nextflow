@@ -29,10 +29,16 @@ process IGV_SNAPSHOTS {
     // meta.id is the sequencing identifier only. No patient identifier ever
     // reaches this process.
     tuple val(meta), path(mm_annotated), path(clinical_tsv), path(t2t_bam), path(t2t_bai), path(hg38_bam), path(hg38_bai)
-    path t2t_fasta
-    path t2t_fai
-    path hg38_fasta
-    path hg38_fai
+    // Each reference is staged into its own directory. As plain path
+    // inputs they land side by side in the task root, so two references
+    // whose FASTA or index share a basename collide and Nextflow refuses
+    // to stage them -- which is what the stub profile does, pointing both
+    // at tests/refs/stub.fa. Separate directories also keep each .fai
+    // beside its own FASTA, which is what igv-reports resolves against.
+    path(t2t_fasta,  stageAs: 't2t_ref/*')
+    path(t2t_fai,    stageAs: 't2t_ref/*')
+    path(hg38_fasta, stageAs: 'hg38_ref/*')
+    path(hg38_fai,   stageAs: 'hg38_ref/*')
 
     output:
     tuple val(meta), path("${meta.id}"),                        emit: igv

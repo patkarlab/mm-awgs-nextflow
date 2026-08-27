@@ -80,6 +80,23 @@ credentials.config
 *.bak
 *.bak_*
 
+# Stub-run fixtures. Empty placeholders that exist so
+# `-profile stub -stub-run` can resolve its reference and input paths;
+# they hold no data.
+#
+# Without these three lines the fixtures cannot be committed at all:
+# stub.fa matches the *.fa reference rule, stub.fa.fai matches *.fai, and
+# stub.bam matches the *.bam patient-data guard. git add reports them as
+# ignored and stages nothing, which is why the fixtures have existed in
+# working trees but never in the repository, and why the stub-run workflow
+# has never had them.
+#
+# Named individually rather than un-ignoring tests/refs/, so the
+# patient-data guards stay in force everywhere else in the tree.
+!tests/refs/stub.fa
+!tests/refs/stub.fa.fai
+!tests/refs/stub.bam
+
 # Run artifacts
 report_v7_*/
 report_v7_*.zip

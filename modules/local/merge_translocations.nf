@@ -27,4 +27,10 @@ process MERGE_TRANSLOCATIONS {
         python: \$(python3 --version 2>&1 | sed 's/Python //')
     END_VERSIONS
     """
+
+    stub:
+    """
+    touch ${meta.id}.translocations.tsv
+    echo '"${task.process}": stub' > versions.yml
+    """
 }

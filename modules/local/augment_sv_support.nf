@@ -35,4 +35,10 @@ process AUGMENT_SV_SUPPORT {
         python: \$(python3 --version 2>&1 | sed 's/Python //')
     END_VERSIONS
     """
+
+    stub:
+    """
+    touch ${meta.id}.mm_annotated.tsv
+    echo '"${task.process}": stub' > versions.yml
+    """
 }
