@@ -1,0 +1,14 @@
+# Sequencing identifiers belonging to the same patient, one group per line.
+#
+# Timepoints of one patient are not independent observations. A junction seen
+# at 18h and again at full depth in the same library is one observation, and
+# counting it twice would let a single patient's artefact clear a
+# three-sample floor on its own.
+#
+# Tab or comma separated. Identifiers not listed here count as their own
+# group, so a single-timepoint sample needs no entry.
+#
+# Add the remaining cohort members as their timepoint pairs are produced.
+11F202602371	11F202602371_18h
+11F202612108	11F202612108_18h
+12F202601015	12F202601015_18h

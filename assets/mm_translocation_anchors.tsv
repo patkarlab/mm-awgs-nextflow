@@ -1,0 +1,39 @@
+anchor	anchor_class	dist_policy	partner_policy	notes
+IGH_locus	enhancer_hijack	interval	any	14q32.33. The primary anchor of this panel. Partners run from the canonical five to a long tail of published rare partners and to partners not yet described, so a dictionary of named pairs cannot cover it. Report any IGH junction whatever the partner, including an off-panel partner resolving only to a cytoband.
+IGK_locus	enhancer_hijack	interval	any	2p11.2. Light-chain enhancer hijack. Rarer than IGH but the same argument applies.
+IGL_locus/IGLL5	enhancer_hijack	interval	any	22q11.22. Light-chain enhancer hijack. IGL::MYC is the best described, but the anchor is not restricted to it.
+MYC	enhancer_hijack	interval	any	8q24.21. Both Ig and non-Ig donors, and the described partner list is long and still growing (Barwick 2019 reports partners across many loci in CoMMpass). MYC rearrangement is a progression event rather than a defining one, so the tier comes from the dictionary and this anchor only ensures the junction is surfaced.
+#
+# dist_policy
+# -----------
+# body      the breakend must lie inside the named gene body, or the label
+#           must be a named interval with no body to measure from. This is
+#           the safe default: a panel interval is wider than the gene it is
+#           named after, so a breakend merely inside the interval is not
+#           evidence about the gene.
+#
+# interval  the anchor fires anywhere its label applies, including the
+#           flank. Every anchor on this panel is set to interval, and the
+#           reason is the panel's design rather than laxity: these windows
+#           are deliberately wide because the breakpoints are dispersed.
+#           t(11;14) breakpoints sit 100-400 kb centromeric of CCND1, MYC
+#           breakpoints scatter over megabases, and t(14;16) breakpoints sit
+#           in WWOX intron 8 about 5 Mb from MAF. Requiring the breakend to
+#           be in the gene body would discard exactly the events the BCR
+#           windows were added to capture, which is the failure the v1 panel
+#           already demonstrated.
+#
+#           The distance is not discarded. gene_a_dist and gene_b_dist carry
+#           it on every row, so a reader can see how far a breakend sits
+#           from the gene it was named after and judge accordingly.
+#
+# partner_policy
+# --------------
+# any       fires whatever the partner is. A self-pair never fires: an
+#           anchor is a claim about partners, and a locus joined to itself
+#           has none. Without that guard every V(D)J and somatic
+#           hypermutation product inside IGH, IGK and IGL would inherit
+#           reportability from a rule that was never about them, and those
+#           recombine physiologically in a plasma cell neoplasm.
+#
+# self      fires only on an intragenic event. Not used on this panel.

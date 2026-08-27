@@ -1,22 +1,22 @@
-partner_a	partner_b	name	frequency	references	notes
-IGH_locus	CCND1	t(11;14)	15-20%	WHO 5th ed	canonical MM partner
-IGH_locus	FGFR3_NSD2	t(4;14)	10-15%	WHO 5th ed	canonical MM partner
-IGH_locus	WWOX_MAF	t(14;16)	3-5%	WHO 5th ed	BCR in WWOX intron 8
-IGH_locus	MAFB	t(14;20)	1-2%	WHO 5th ed	
-IGH_locus	CCND3	t(6;14)	1-2%	WHO 5th ed	
-IGH_locus	CCND2	t(12;14)	<1%	WHO 5th ed	rare cyclin D partner
-IGH_locus	MAFA	t(8;14;MAFA)	<1%	WHO 5th ed	rare Ig partner
-IGH_locus	MYC	t(8;14)	5-10%	PMID:35522533	can hijack via MYC enhancers
-IGH_locus	IRF4	t(IRF4;14)	rare	PMID:35522533	plasma cell TF
-IGH_locus	TXNDC5	rare partner	~5%	Barwick 2019; CoMMpass	3rd most common MYC partner
-IGH_locus	FCRL4_FCRL5	rare partner	1-2%	Mayo; PMID:12354927	IRTA1/IRTA2
-IGH_locus	BCL2	rare partner	<1%	WHO 5th ed	venetoclax marker
-IGH_locus	CXCR4	rare partner	<1%	PMID:35522533	
-IGH_locus	LRRK2	rare partner	<1%	PMID:35522533	
-IGH_locus	MAP3K14	rare partner	<1%	PMID:29654269	NF-kB
-IGH_locus	PAX5	rare partner	<1%	PMID:9892103	
-IGH_locus	TNFAIP8	rare partner	<1%	PMID:35522533	
-IGK_locus	MYC	t(2;8)	<1%	WHO 5th ed	light chain partner
-IGL_locus	MYC	t(8;22)	<1%	WHO 5th ed	light chain partner
-MYC	TXNDC5	non-Ig MYC	<1%	Barwick 2019	common non-Ig MYC partner
-MYC	XBP1	non-Ig MYC	<1%	literature	plasma cell partner
+partner_a	partner_b	name	tier	entity	frequency	partner_b_band	min_span_bp	references	notes
+IGH_locus	CCND1	t(11;14)	defining	PCN with IGH::CCND1	15-20%			WHO 5th ed	canonical MM partner
+IGH_locus	FGFR3_NSD2	t(4;14)	defining	PCN with IGH::NSD2	10-15%			WHO 5th ed	canonical MM partner
+IGH_locus	WWOX_MAF	t(14;16)	defining	PCN with IGH::MAF	3-5%			WHO 5th ed	BCR in WWOX intron 8
+IGH_locus	MAFB	t(14;20)	defining	PCN with IGH::MAFB	1-2%			WHO 5th ed	
+IGH_locus	CCND3	t(6;14)	defining	PCN with IGH::CCND3	1-2%			WHO 5th ed	
+IGH_locus	CCND2	t(12;14)	defining	PCN with IGH::CCND2	<1%			WHO 5th ed	rare cyclin D partner
+IGH_locus	MAFA	t(8;14;MAFA)	defining	PCN with IGH::MAFA	<1%			WHO 5th ed	rare Ig partner
+IGH_locus	MYC	t(8;14)	secondary	PCN with MYC rearrangement	5-10%			PMID:35522533	can hijack via MYC enhancers
+IGH_locus	IRF4	t(IRF4;14)	emerging	PCN with rare IGH partner	rare			PMID:35522533	plasma cell TF
+IGH_locus	TXNDC5	rare partner	emerging	PCN with rare IGH partner	~5%			Barwick 2019; CoMMpass	3rd most common MYC partner
+IGH_locus	FCRL4_FCRL5	rare partner	emerging	PCN with rare IGH partner	1-2%			Mayo; PMID:12354927	IRTA1/IRTA2
+IGH_locus	BCL2	rare partner	emerging	PCN with rare IGH partner	<1%			WHO 5th ed	venetoclax marker
+IGH_locus	CXCR4	rare partner	emerging	PCN with rare IGH partner	<1%			PMID:35522533	
+IGH_locus	LRRK2	rare partner	emerging	PCN with rare IGH partner	<1%			PMID:35522533	
+IGH_locus	MAP3K14	rare partner	emerging	PCN with rare IGH partner	<1%			PMID:29654269	NF-kB
+IGH_locus	PAX5	rare partner	emerging	PCN with rare IGH partner	<1%			PMID:9892103	
+IGH_locus	TNFAIP8	rare partner	emerging	PCN with rare IGH partner	<1%			PMID:35522533	
+IGK_locus	MYC	t(2;8)	secondary	PCN with MYC rearrangement	<1%			WHO 5th ed	light chain partner
+IGL_locus/IGLL5	MYC	t(8;22)	secondary	PCN with MYC rearrangement	<1%			WHO 5th ed	light chain partner
+MYC	TXNDC5	non-Ig MYC	secondary	PCN with MYC rearrangement	<1%			Barwick 2019	common non-Ig MYC partner
+MYC	XBP1	non-Ig MYC	secondary	PCN with MYC rearrangement	<1%			literature	plasma cell partner

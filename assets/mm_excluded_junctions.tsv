@@ -1,0 +1,59 @@
+# Junctions excluded from the annotated SV table.
+#
+# EMPTY BY DESIGN. This file ships with no rows. The intervals that belong
+# here are properties of this cohort, this panel and this aligner, and
+# importing another study's list would exclude junctions that were never
+# observed here while missing the ones that were.
+#
+# Derive the candidates from your own tables:
+#
+#   bin/derive_excluded_junctions.py \
+#       --annotated results/t2t/calls/mm_annotated/*.mm_annotated.tsv \
+#       --min-samples 3 --tolerance 200 \
+#       --output assets/mm_excluded_junctions.proposed.tsv
+#
+# Every proposal is written commented out. Read each against the alignment,
+# then move the ones you accept into this file uncommented.
+#
+# THE CRITERION IS COORDINATE IDENTITY, NOT RECURRENCE.
+#
+# Somatic breakpoints do not recur to the nucleotide between individuals:
+# repair at a real junction is imprecise, so two patients sharing a
+# rearrangement share the intron, not the base. Agreement to within a few
+# bases across unrelated samples is a property of the reference or the
+# aligner rather than of the tumours.
+#
+# Recurrence alone must never become the criterion. This disease is defined
+# by recurrent events: t(11;14) appears in 15-20% of patients, t(4;14) in
+# 10-15%. A list built on "seen in several samples" would exclude the panel's
+# entire purpose.
+#
+# A row whose dictionary entry names it, or which carries a tier, is never
+# excluded regardless of what matches here. The override lives in
+# bin/annotate_mm_translocations.py and is not configurable.
+#
+# Junctions on an Ig anchor deserve particular scrutiny before being added.
+# The anchor rule makes any IGH, IGK, IGL or MYC junction reportable
+# whatever the partner, so an artefact on one of those loci reaches the
+# report on every sample in the cohort. That is the reason a list like this
+# exists at all.
+#
+# Positions are 1-based, on T2T-CHM13v2.0. TOLERANCE is the window either
+# side, in bp, within which a call is treated as the same artefact. Both
+# orientations are matched, so a reciprocal mate needs no separate row.
+#
+# CHROM_A	POS_A	CHROM_B	POS_B	TOLERANCE	SEEN_IN	NOTE
+chr3	114276055	chr8	128649021	2500	11F2025023808,11F2026011457,11F2026015394,11F2026017209,11F2026017530,11F2026018231,11F2026018931,11F202610129,11F202611829,11F20265231,11F20265533,11F20269774,12F2026005052,12F20264455	
+chr2	118920708	chr8	128649041	2500	11F2025023808,11F2026011457,11F2026015394,11F2026017530,11F2026018231,11F2026018931,11F202610129,11F20265231,11F20265533,11F20269774,12F2026005052,12F20264455	
+chr22	22545519	chrY	5286179	2500	11F20239040,11F2025023808,11F2026015394,11F2026017209,11F2026017530,11F2026018231,11F20265533,11F20269774,12F2026005052	
+chr16	35531008	chr22	22774971	2500	11F20239040,11F2026017209,11F2026017530,11F2026018231,11F2026018760,11F20265231,12F2026005052,12F20264455	
+chr2	88741806	chr8	84096488	2500	11F2025023808,11F2026018231,11F2026018760,11F2026018931,11F202610129,11F20265533,12F2026005052,12F20264455	
+chr22	22545508	chrY	5292215	2500	11F2025023808,11F2026015394,11F2026017209,11F2026017530,11F2026018231,11F20265533,11F20269774,12F2026005052	
+chr22	22774972	chr8	84093467	2500	11F20239040,11F2026017209,11F2026017530,11F2026018231,11F2026018760,11F20265231,12F2026005052,12F20264455	
+chr12	4640585	chr4	111713475	2500	11F2025023808,11F2026011457,11F2026015394,11F2026017530,11F2026018760,11F2026018931,12F20264455	
+chr16	35524961	chr22	22774956	2500	11F20239040,11F2026017209,11F2026017530,11F2026018231,11F2026018760,11F20265231,12F20264455	
+chr17	27415657	chr22	22545518	2500	11F2025023808,11F2026015394,11F2026017209,11F2026017530,11F2026018231,11F20265533,11F20269774	
+chr12	40199812	chr8	122048972	2500	11F2025023808,11F2026017209,11F2026018231,11F20269774,12F2026005052,12F20264455	
+chr10	97821249	chr12	4640584	2500	11F2025023808,11F2026017530,11F2026018231,11F2026018931,11F20265231	
+chr17	7165563	chr8	30566758	2500	11F2025023808,11F2026011457,11F2026017209,11F2026018760,11F20269774	
+chr2	88741788	chr8	84099525	2500	11F2025023808,11F2026018231,11F2026018760,11F2026018931,11F20265533	

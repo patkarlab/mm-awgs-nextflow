@@ -184,7 +184,16 @@ def merge_cluster(members):
     filt = "PASS" if any((m.get("filter") or "").strip() == "PASS" for m in members) \
         else (rep.get("filter") or "")
 
-    return {
+    # Start from the representative's own row rather than building a fresh
+    # dict, so a column this function does not know about survives the merge.
+    # It previously named every field explicitly, and anything else was
+    # written blank: the header still carried the column because out_cols
+    # comes from the input header, but the value was gone. That silently
+    # emptied tier, entity, band_a, band_b and the per-caller filter columns
+    # in translocations.tsv, which is the condensed table a reader opens.
+    merged = dict(rep)
+    merged.pop("_ends", None)
+    merged.update({
         "sample": rep.get("sample", ""),
         "sv_id": rep.get("sv_id", ""),
         "sv_type": "TRA",
@@ -206,7 +215,19 @@ def merge_cluster(members):
         "support_severus": sup_sev,
         "n_merged": str(len(members)),
         "merged_sv_ids": ",".join(m.get("sv_id", "") for m in members),
-    }
+    })
+    # Naming and grading come from whichever member carries them, not from
+    # the representative alone, on the same reasoning as known_mm_pair: a
+    # cluster member that resolved to a named gene may not be the one with
+    # the most support.
+    for col in ("entity", "tier", "match_quality", "anchor", "anchor_class",
+                "band_a", "band_b"):
+        v = first_nonempty(members, col)
+        if v:
+            merged[col] = v
+    if any((m.get("reportable") or "") == "yes" for m in members):
+        merged["reportable"] = "yes"
+    return merged
 
 
 def cluster_tra(tra_rows, max_dist):

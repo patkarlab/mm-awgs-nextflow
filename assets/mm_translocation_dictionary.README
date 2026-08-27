@@ -29,3 +29,42 @@ Consequences worth knowing when editing this file:
 To add a new canonical pair, add a row with partner_a / partner_b as gene
 symbols (either naming convention works) plus name / frequency / references /
 notes. No code change is needed.
+
+
+Columns added at v0.4.0
+=======================
+
+tier            How firmly the pair is established, and as what kind of event.
+
+                  defining   a primary IGH translocation. An initiating
+                             event, mutually exclusive with hyperdiploidy.
+                  secondary  a MYC rearrangement. A progression event, and
+                             graded separately for that reason rather than
+                             being ranked below the primaries by frequency.
+                  emerging   published but rare, or a single-report partner.
+
+                A tier is what makes a row survive the report's SV-type
+                filter and earn an IGV page whatever its SV type. Leave it
+                empty for a pair you do not want graded.
+
+                The annotator appends "?" when the match was only partial,
+                so a graded row always states how firmly it was graded.
+
+entity          The entity the pair implies, written out. Rendered in the
+                report beside the pair name.
+
+partner_b_band  The cytoband where partner_b is expected, for a partner the
+                panel does not capture. When one side matches a gene and the
+                other resolves only to a cytoband, this is what still names
+                the event. Every partner in this file is currently on-panel,
+                so the column is empty throughout; it exists so a partner can
+                be added here without also being added to the panel.
+
+min_span_bp     Minimum span for an intrachromosomal event to keep this
+                pair's entity claim. Guards against a small intra-interval
+                event matching on tokens alone when both partners share one
+                panel interval. No row needs it at present.
+
+Grading is a biological prior and belongs here, in the dictionary, not in
+the annotator. bin/annotate_mm_translocations.py contains no pair, tier or
+entity of its own.

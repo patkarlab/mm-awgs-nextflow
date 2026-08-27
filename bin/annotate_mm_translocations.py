@@ -3,34 +3,68 @@
 annotate_mm_translocations.py
 =============================
 
-Annotates a SURVIVOR-merged VCF of structural variants against the MM-specific
-translocation panel by intersecting BND breakpoints with the panel BED.
+Annotates a SURVIVOR-merged VCF of structural variants against the plasma
+cell neoplasm panel, by intersecting breakpoints with the panel BED.
 
 For each record where at least one breakpoint falls inside a panel region,
-emits a row of:
-  - sample id
-  - SV id / type / filter
-  - both breakpoints (chrom, pos, gene region)
-  - whether the pair matches a known MM partner pair (from dictionary)
-  - supporting callers inferred from SURVIVOR's SUPP_VEC
-  - support read counts from FORMAT/DV (fallback INFO RE / SUPPORT / SR)
+emits a row carrying both breakpoints, what each one landed in, whether the
+pair is named by the dictionary, and how firmly.
 
-The dictionary file is the only source of biological priors. The script
-itself never hardcodes any expected breakpoints, sample-specific findings,
-or known karyotypes.
+What this version adds
+----------------------
+GENE MODEL. Breakpoints were named from the panel interval, which is flanked
+and merged for capture. 62% of the v7 panel is flank, and five intervals
+carry compound labels. A t(4;14) breakend landed in a window called
+"FGFR3/NSD2" and the table could not say which gene it was in, so IGH::FGFR3
+and IGH::NSD2 were indistinguishable. With a gene model the two are 62 kb
+apart and the answer is available. gene_a_dist and gene_b_dist record how far
+each breakend sits from the gene it was named after.
+
+Falling back to the interval label is still the right answer for a
+breakpoint-cluster event and is not a failure: MYC's body is 8 kb inside a
+5 Mb window, and t(11;14) breakpoints sit 100-400 kb outside CCND1. The
+distance columns are what make that auditable rather than implicit.
+
+CYTOBAND COLUMNS. band_a and band_b are emitted for both sides. Downstream,
+merge_translocations groups junctions by chromosome arm, which is parsed from
+the band rather than the chromosome, and could not be done without them.
+
+GRADING. tier, entity and reportable come from the dictionary and the anchor
+table. Nothing downstream could previously tell a defining translocation from
+an incidental junction, so the report and the IGV page selection filtered on
+SV type alone and hid intrachromosomal findings behind a toggle.
+
+ANCHORS. A dictionary of named pairs cannot cover a locus whose partner list
+is open. Any IGH, IGK, IGL or MYC junction is reportable whatever the
+partner, including a partner that is off-panel and resolves only to a band.
+
+EXCLUSIONS. Junctions observed at coordinate-identical positions in unrelated
+patients can be dropped. The criterion is coordinate identity, not
+recurrence: this disease is defined by recurrent events. A dictionary-named
+or graded row is never dropped, and that override is not configurable.
+
+This script holds no biological priors of its own. Every pair, tier, entity
+and anchor comes from --dictionary and --anchors; every coordinate comes from
+--panel-bed, --gene-model and --cytoband-bed. No variant, FISH finding or
+expected karyotype is hardcoded anywhere.
 
 Usage:
   annotate_mm_translocations.py \\
-      --vcf merged.vcf.gz \\
-      --panel-bed aWGS_MMfocused_v6_t2t_chr.bed \\
-      --dictionary mm_translocation_dictionary.tsv \\
-      --sample SAMPLE_ID \\
-      --output SAMPLE_ID.mm_annotated.tsv
+      --vcf                merged.vcf.gz \\
+      --panel-bed          aWGS_PCN_v7_t2t_chr.bed \\
+      --gene-model         aWGS_PCN_v7_gene_model_t2t.bed \\
+      --dictionary         mm_translocation_dictionary.tsv \\
+      --anchors            mm_translocation_anchors.tsv \\
+      --cytoband-bed       chm13v2.0_cytobands_allchrs.bed \\
+      --excluded-junctions mm_excluded_junctions.tsv \\
+      --sample             SAMPLE_ID \\
+      --output             SAMPLE_ID.mm_annotated.tsv
 """
 
 from __future__ import annotations
 
 import argparse
+import csv
 import gzip
 import sys
 from dataclasses import dataclass
@@ -38,7 +72,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 
-__version__ = "0.3.0"
+__version__ = "0.4.0"
 # [dictionary-token-matching applied]
 # [cytoband-partner-annotation applied]
 
@@ -100,41 +134,6 @@ def _norm_tokens(name: str) -> frozenset:
     raw = str(name).strip().upper().replace("+", "/").replace("_", "/")
     return frozenset(t for t in raw.split("/")
                      if t and t not in _PARTNER_SUFFIX_TOKENS)
-
-
-def load_dictionary(dict_path):
-    """
-    Load the MM translocation dictionary as a list of
-    (tokset_a, tokset_b, row) entries. Partner names are reduced to gene
-    token sets (see _norm_tokens) so lookup matches on gene identity rather
-    than exact label. Missing dictionary file is non-fatal (empty list).
-    """
-    out = []
-    if not dict_path.exists():
-        return out
-    with open(dict_path) as fh:
-        header = fh.readline().rstrip("\n").split("\t")
-        for line in fh:
-            row = dict(zip(header, line.rstrip("\n").split("\t")))
-            a = (row.get("partner_a") or "").strip()
-            b = (row.get("partner_b") or "").strip()
-            if not a or not b:
-                continue
-            out.append((_norm_tokens(a), _norm_tokens(b), row))
-    return out
-
-
-def dictionary_lookup(dictionary, gene_a, gene_b):
-    """Return the dictionary row for an unordered gene-a / gene-b pair, or
-    None. Matches when the pair's token sets intersect the entry's token
-    sets on both sides (in either orientation)."""
-    ta, tb = _norm_tokens(gene_a), _norm_tokens(gene_b)
-    if not ta or not tb:
-        return None
-    for da, db, row in dictionary:
-        if (ta & da and tb & db) or (ta & db and tb & da):
-            return row
-    return None
 
 
 def parse_info(info_field: str) -> Dict[str, str]:
@@ -317,24 +316,317 @@ def _strip_chr(chrom: str) -> str:
     return chrom[3:] if chrom.startswith("chr") else chrom
 
 
-def characterize_side(chrom, pos, region, cytobands):
-    """Return (label, source) for one breakpoint side.
+# -----------------------------------------------------------------------------
+# Gene model
+# -----------------------------------------------------------------------------
+def load_gene_model(path: Optional[Path]) -> List[PanelRegion]:
+    """Bare gene bodies, for naming a breakpoint and measuring distance.
 
-    panel region      -> (region.name, "panel")
-    else band found   -> ("8q24.21",   "cytoband")
-    else (defensive)  -> ("chr8:127.0Mb", "coordinate")
+    Separate from the panel BED and never used to decide panel membership.
+    The panel's intervals are flanked and merged, which is right for capture
+    and wrong for naming: 62% of the v7 panel is flank, and five of its
+    intervals carry compound labels (FGFR3/NSD2, WWOX/MAF, TP53+TNFSF12,
+    FCRL5/FCRL4, IGL/IGLL5) that name two genes without saying which one a
+    breakend fell in.
+
+    Optional. Without it the annotator behaves as it did before: labels come
+    from the panel interval and the distance columns stay empty.
     """
-    if region is not None:
-        return region.name, "panel"
-    band = cytobands.band_for(chrom, pos)
-    if band is not None:
-        return f"{_strip_chr(chrom)}{band}", "cytoband"
-    if chrom is not None and pos is not None:
-        return f"{chrom}:{pos / 1e6:.1f}Mb", "coordinate"
-    return "OFF_PANEL", "coordinate"
+    if path is None or not Path(str(path)).is_file():
+        return []
+    return load_panel(Path(path))
 
 
-def region_for(chrom: Optional[str], pos: Optional[int], panel: List[PanelRegion]) -> Optional[PanelRegion]:
+def gene_for(chrom, pos, model) -> Optional[str]:
+    """Tightest gene-model feature containing this coordinate, or None.
+
+    Tightest wins because gene models legitimately nest: IGLL5 lies inside
+    the IGL locus, and the smaller feature is the more specific answer. A
+    breakend in IGLL5 is named IGLL5; one elsewhere in the locus is IGL.
+    """
+    if not model or chrom is None or pos is None:
+        return None
+    best = None
+    for reg in model:
+        if reg.chrom == chrom and reg.start <= pos < reg.end:
+            if best is None or (reg.end - reg.start) < (best.end - best.start):
+                best = reg
+    return best.name if best else None
+
+
+def dist_to_gene(chrom, pos, name, model) -> Optional[int]:
+    """Bases from this coordinate to the named gene's body; 0 if inside.
+
+    None when the label names nothing in the model - a cytoband, a compound
+    panel label, a bare coordinate - because there is no body to measure
+    from. The nearest record of that name wins when a symbol has several.
+    """
+    if not model or chrom is None or pos is None or not name:
+        return None
+    best = None
+    for reg in model:
+        if reg.chrom == chrom and reg.name == name:
+            d = max(reg.start - pos, pos - reg.end, 0)
+            if best is None or d < best:
+                best = d
+    return best
+
+
+# -----------------------------------------------------------------------------
+# Dictionary, graded
+# -----------------------------------------------------------------------------
+@dataclass
+class DictEntry:
+    tok_a: frozenset
+    tok_b: frozenset
+    band_b: str
+    row: dict
+
+
+def load_dictionary(dict_path: Path) -> List[DictEntry]:
+    """Named partner pairs. The only source of biological priors here.
+
+    A missing file is non-fatal and yields an empty list: every junction is
+    then emitted unnamed rather than the run failing. Nothing in this script
+    knows any pair, tier or entity of its own.
+    """
+    out: List[DictEntry] = []
+    if not dict_path.exists():
+        sys.stderr.write(f"WARNING: dictionary not found: {dict_path}\n")
+        return out
+    with open(dict_path) as fh:
+        for row in csv.DictReader(fh, delimiter="\t"):
+            a = (row.get("partner_a") or "").strip()
+            b = (row.get("partner_b") or "").strip()
+            if not a or not b:
+                continue
+            out.append(DictEntry(_norm_tokens(a), _norm_tokens(b),
+                                 (row.get("partner_b_band") or "").strip(), row))
+    return out
+
+
+def _band_levels(band: Optional[str]) -> List[str]:
+    """Progressively coarser forms of a cytoband label, most precise first.
+
+    '14q32.33' -> ['14q32.33', '14q32', '14q']
+
+    Exact sub-band equality is too brittle to depend on. T2T-CHM13 band
+    boundaries are not GRCh38's, and the published band for a partner is
+    usually quoted against GRCh38, so a breakpoint one sub-band away would
+    otherwise lose its name.
+    """
+    if not band:
+        return []
+    out = [band]
+    if "." in band:
+        out.append(band.split(".", 1)[0])
+    for i, ch in enumerate(out[-1]):
+        if ch in "pq":
+            arm = out[-1][:i + 1]
+            if arm != out[-1]:
+                out.append(arm)
+            break
+    return out
+
+
+def _band_match(observed: Optional[str], expected: str) -> Optional[str]:
+    """Match quality if observed and expected bands agree at any level.
+
+    Walks coarse to fine, remembering the finest level that agrees and
+    stopping at the first shared level that disagrees. 16q23 and 16q12 agree
+    on the arm but differ at the major band: that is a contradiction, not a
+    partial match, and it returns partial_arm rather than being promoted.
+    """
+    if not observed or not expected:
+        return None
+    obs, exp = _band_levels(observed), _band_levels(expected)
+    if not obs or not exp:
+        return None
+    depth = -1
+    for i in range(min(len(obs), len(exp))):
+        if obs[i] == exp[i]:
+            depth = i
+        else:
+            if depth < 0:
+                return None
+            break
+    if depth >= 1:
+        return "partial_band"
+    if depth == 0:
+        return "partial_arm"
+    return None
+
+
+def dictionary_lookup(dictionary, label_a, label_b,
+                      band_a=None, band_b=None) -> Tuple[Optional[dict], str]:
+    """Return (row, match_quality) for an unordered pair.
+
+    'full'          both sides matched on gene identity
+    'partial_band'  one side matched a gene, the other matched the expected
+                    cytoband the dictionary records for an off-panel partner
+    'partial_arm'   as above but agreeing only at arm level: a lead, not a
+                    call
+    ('', None) when nothing matches.
+
+    Band matching exists for partners this panel does not capture. Every
+    partner in the shipped dictionary is on-panel, so partner_b_band is
+    empty throughout and only the 'full' path fires today. The mechanism is
+    here so a partner can be added to the dictionary without also having to
+    be added to the panel.
+    """
+    ta, tb = _norm_tokens(label_a), _norm_tokens(label_b)
+    if not ta or not tb:
+        return None, ""
+
+    for e in dictionary:
+        if (ta & e.tok_a and tb & e.tok_b) or (ta & e.tok_b and tb & e.tok_a):
+            return e.row, "full"
+
+    best = None
+    for e in dictionary:
+        if not e.band_b:
+            continue
+        for gene_tok, other_band in ((ta, band_b), (tb, band_a)):
+            if not (gene_tok & e.tok_a):
+                continue
+            q = _band_match(other_band, e.band_b)
+            if q == "partial_band":
+                return e.row, q
+            if q and best is None:
+                best = (e.row, q)
+    return best if best else (None, "")
+
+
+# -----------------------------------------------------------------------------
+# Anchors
+# -----------------------------------------------------------------------------
+def load_anchors(path: Optional[Path]) -> Dict[str, dict]:
+    """Gene token -> anchor row.
+
+    An anchor is a locus whose partner list is open: the dictionary names
+    what is described, the anchor covers what is not. Comment lines are
+    skipped so the table can carry its own documentation.
+    """
+    out: Dict[str, dict] = {}
+    if path is None or not Path(str(path)).is_file():
+        sys.stderr.write(f"WARNING: anchor table not found: {path}\n")
+        return out
+    with open(path) as fh:
+        rows = [ln for ln in fh if not ln.lstrip().startswith("#")]
+    for row in csv.DictReader(rows, delimiter="\t"):
+        anchor = (row.get("anchor") or "").strip()
+        if not anchor:
+            continue
+        for tok in _norm_tokens(anchor):
+            out[tok] = row
+    return out
+
+
+def anchor_hits(anchors, label_a, label_b, dist_a, dist_b) -> List[dict]:
+    """Anchor rows triggered by either side of a junction.
+
+    A self-pair returns nothing. An anchor is a claim about partners: the
+    locus rearranges with many of them, so any partner is worth surfacing. A
+    locus joined to itself has no partner and the premise does not apply.
+    Without that guard every V(D)J and somatic hypermutation product inside
+    IGH, IGK and IGL would inherit reportability from a rule that was never
+    about it, and in a plasma cell neoplasm those loci recombine and
+    hypermutate physiologically.
+
+    dist_policy decides whether a breakend in the panel flank still counts.
+    'body' requires the breakend to be in the named gene, or the label to be
+    one with no body to measure from. 'interval' fires wherever the label
+    applies. Every anchor on this panel is 'interval', because the windows
+    are deliberately wide: t(11;14) breakpoints sit 100-400 kb from CCND1
+    and t(14;16) breakpoints about 5 Mb from MAF, so a body rule would
+    discard the events the BCR windows exist to capture. The distance is
+    still reported on every row.
+    """
+    if label_a and label_b and label_a == label_b:
+        return []
+    hits, seen = [], set()
+    for label, dist in ((label_a, dist_a), (label_b, dist_b)):
+        if not label:
+            continue
+        for tok in _norm_tokens(label):
+            row = anchors.get(tok)
+            if not row or row["anchor"] in seen:
+                continue
+            policy = (row.get("dist_policy") or "body").strip().lower()
+            if policy != "interval" and dist not in (0, None):
+                continue
+            seen.add(row["anchor"])
+            hits.append(row)
+    return hits
+
+
+# -----------------------------------------------------------------------------
+# Excluded junctions
+# -----------------------------------------------------------------------------
+def load_excluded_junctions(path: Optional[Path]) -> Dict[Tuple[str, str], list]:
+    """Junctions to drop, keyed by chromosome pair, both orientations stored.
+
+    The criterion is coordinate identity across unrelated patients, not
+    recurrence. Somatic breakpoints do not recur to the nucleotide between
+    individuals: repair at a real junction is imprecise, so two patients
+    sharing a rearrangement share the intron, not the base.
+
+    Recurrence alone must not become the criterion here. This disease is
+    defined by recurrent events - t(11;14) appears in 15-20% of patients and
+    is a finding, not noise. Coordinate identity is a different claim.
+    """
+    out: Dict[Tuple[str, str], list] = {}
+    if path is None or not Path(str(path)).is_file():
+        return out
+    with open(path) as fh:
+        for line in fh:
+            if not line.strip() or line.startswith("#"):
+                continue
+            f = line.rstrip("\n").split("\t")
+            if len(f) < 5 or f[0].lower() in ("chrom_a", "#chrom_a"):
+                continue
+            try:
+                ca, pa, cb, pb, tol = f[0], int(f[1]), f[2], int(f[3]), int(f[4])
+            except ValueError:
+                sys.stderr.write(f"excluded junctions: unparsable row: {line}")
+                continue
+            note = f[6] if len(f) > 6 else ""
+            out.setdefault((ca, cb), []).append((pa, pb, tol, note))
+            out.setdefault((cb, ca), []).append((pb, pa, tol, note))
+    return out
+
+
+def excluded_reason(excl, row) -> Optional[str]:
+    """Why this junction is excluded, or None.
+
+    A dictionary-named pair is never excluded, whatever it matches here. The
+    list is a noise filter and a named entity has cleared a higher bar than
+    coordinate recurrence can overturn. This override is deliberately not
+    configurable: it is what stops a cohort-derived artefact list from ever
+    silencing a t(11;14).
+    """
+    if not excl:
+        return None
+    if (row.get("known_mm_pair") or "").strip():
+        return None
+    if (row.get("tier") or "").strip():
+        return None
+    ca, cb = row.get("chrom_a"), row.get("chrom_b")
+    try:
+        pa, pb = int(row.get("pos_a")), int(row.get("pos_b"))
+    except (TypeError, ValueError):
+        return None
+    for (xa, xb, tol, note) in excl.get((ca, cb), []):
+        if abs(pa - xa) <= tol and abs(pb - xb) <= tol:
+            return (f"listed artefact at {ca}:{xa} x {cb}:{xb} "
+                    f"(+/-{tol} bp)" + (f"; {note}" if note else ""))
+    return None
+
+
+# -----------------------------------------------------------------------------
+# Annotation
+# -----------------------------------------------------------------------------
+def region_for(chrom, pos, panel) -> Optional[PanelRegion]:
     if chrom is None or pos is None:
         return None
     for r in panel:
@@ -343,7 +635,38 @@ def region_for(chrom: Optional[str], pos: Optional[int], panel: List[PanelRegion
     return None
 
 
-def annotate(records, panel, dictionary, sample, cytobands):
+def characterize_side(chrom, pos, region, cytobands, gene_model=None):
+    """Return (label, source, band) for one breakpoint side.
+
+    Resolution order: gene model, panel interval label, cytoband, coordinate.
+
+    The gene model comes first because a panel interval may be a compound
+    ("FGFR3/NSD2") that names two genes without saying which. It comes first
+    only for labelling; panel membership is decided separately by region_for
+    against the panel BED.
+
+    Falling back to the panel label is the right answer for a BCR breakend,
+    not a failure. MYC's body is 8 kb inside a 5 Mb window and t(11;14)
+    breakpoints sit outside CCND1 entirely, so most real breakends on this
+    panel resolve to the interval label. The distance column is what makes
+    that auditable.
+    """
+    band = cytobands.band_for(chrom, pos)
+    band_label = f"{_strip_chr(chrom)}{band}" if band and chrom else None
+    gene = gene_for(chrom, pos, gene_model)
+    if gene:
+        return gene, "gene_model", band_label
+    if region is not None:
+        return region.name, "panel", band_label
+    if band_label:
+        return band_label, "cytoband", band_label
+    if chrom is not None and pos is not None:
+        return f"{chrom}:{pos / 1e6:.1f}Mb", "coordinate", None
+    return "OFF_PANEL", "coordinate", None
+
+
+def annotate(records, panel, dictionary, anchors, sample, cytobands,
+             gene_model=None):
     out = []
     for r in records:
         side_a = region_for(r.chrom, r.pos, panel)
@@ -351,16 +674,46 @@ def annotate(records, panel, dictionary, sample, cytobands):
         if side_a is None and side_b is None:
             continue
 
-        gene_a, gene_a_source = characterize_side(r.chrom, r.pos, side_a, cytobands)
-        gene_b, gene_b_source = characterize_side(r.mate_chrom, r.mate_pos, side_b, cytobands)
+        gene_a, src_a, band_a = characterize_side(
+            r.chrom, r.pos, side_a, cytobands, gene_model)
+        gene_b, src_b, band_b = characterize_side(
+            r.mate_chrom, r.mate_pos, side_b, cytobands, gene_model)
 
-        known = ""
-        freq = ""
-        if side_a and side_b and gene_a_source == "panel" and gene_b_source == "panel":
-            hit = dictionary_lookup(dictionary, gene_a, gene_b)
-            if hit:
-                known = hit.get("name", "yes")
-                freq = hit.get("frequency", "")
+        dist_a = dist_to_gene(r.chrom, r.pos, gene_a, gene_model)
+        dist_b = dist_to_gene(r.mate_chrom, r.mate_pos, gene_b, gene_model)
+
+        hit, quality = dictionary_lookup(dictionary, gene_a, gene_b,
+                                         band_a, band_b)
+
+        # Span guard. Where a dictionary row declares min_span_bp and the
+        # event is intrachromosomal with both ends known, an undersized span
+        # demotes the match: the record stays, the entity claim goes. No
+        # shipped row sets it, because no pair in this dictionary has both
+        # partners inside one panel interval, but the guard belongs with the
+        # matching rather than being added after one is needed.
+        span_note = ""
+        if hit and quality == "full":
+            ms = (hit.get("min_span_bp") or "").strip()
+            if ms and r.mate_chrom == r.chrom and r.mate_pos is not None:
+                span = abs(r.mate_pos - r.pos)
+                if span < int(ms):
+                    span_note = (f"span {span}bp < min {ms}bp for "
+                                 f"{hit.get('name', 'pair')}; entity removed")
+                    hit, quality = None, "below_span"
+
+        hits = anchor_hits(anchors, gene_a, gene_b, dist_a, dist_b)
+
+        # Reportable when the dictionary names it or it touches an anchor.
+        # Everything else is still emitted, carrying reportable=no, so the
+        # on-panel callset stays auditable rather than silently trimmed.
+        reportable = "yes" if (hit or hits) else "no"
+
+        # tier is the dictionary's, marked with '?' when the match was only
+        # partial, so a graded row always says how firmly it was graded.
+        tier = ""
+        if hit:
+            t = hit.get("tier", "")
+            tier = t if quality == "full" else (t + "?" if t else "")
 
         out.append({
             "sample":         sample,
@@ -373,10 +726,21 @@ def annotate(records, panel, dictionary, sample, cytobands):
             "chrom_b":        r.mate_chrom or "",
             "pos_b":          str(r.mate_pos) if r.mate_pos is not None else "",
             "gene_b":         gene_b,
-            "gene_a_source":  gene_a_source,
-            "gene_b_source":  gene_b_source,
-            "known_mm_pair":  known,
-            "known_freq":     freq,
+            "gene_a_source":  src_a,
+            "gene_b_source":  src_b,
+            "gene_a_dist":    "" if dist_a is None else str(dist_a),
+            "gene_b_dist":    "" if dist_b is None else str(dist_b),
+            "band_a":         band_a or "",
+            "band_b":         band_b or "",
+            "known_mm_pair":  hit.get("name", "") if hit else "",
+            "entity":         hit.get("entity", "") if hit else "",
+            "tier":           tier,
+            "known_freq":     hit.get("frequency", "") if hit else "",
+            "match_quality":  quality,
+            "anchor":         ",".join(h["anchor"] for h in hits),
+            "anchor_class":   ",".join(h.get("anchor_class", "") for h in hits),
+            "reportable":     reportable,
+            "dict_notes":     (hit.get("notes", "") if hit else span_note),
             "callers":        ",".join(r.callers) or "unknown",
             "n_callers":      str(len(r.callers)),
             "supp_vec":       r.info.get("SUPP_VEC", ""),
@@ -385,40 +749,95 @@ def annotate(records, panel, dictionary, sample, cytobands):
     return out
 
 
+COLUMNS = [
+    "sample", "sv_id", "sv_type", "filter",
+    "chrom_a", "pos_a", "gene_a", "chrom_b", "pos_b", "gene_b",
+    "gene_a_source", "gene_b_source", "gene_a_dist", "gene_b_dist",
+    "band_a", "band_b",
+    "known_mm_pair", "entity", "tier", "known_freq", "match_quality",
+    "anchor", "anchor_class", "reportable", "dict_notes",
+    "callers", "n_callers", "supp_vec", "support_reads",
+]
+
+
 def main() -> int:
-    ap = argparse.ArgumentParser(description=__doc__,
-                                 formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--vcf",         required=True, type=Path)
-    ap.add_argument("--panel-bed",   required=True, type=Path)
-    ap.add_argument("--dictionary",  required=True, type=Path)
+    ap = argparse.ArgumentParser(
+        description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--vcf", required=True, type=Path)
+    ap.add_argument("--panel-bed", required=True, type=Path)
+    ap.add_argument("--dictionary", required=True, type=Path)
     ap.add_argument("--cytoband-bed", required=True, type=Path,
-                    help="T2T-CHM13v2.0 cytoband BED (chrom start end band ...). "
-                         "Off-panel breakpoint partners are characterized by band.")
-    ap.add_argument("--sample",      required=True, type=str)
-    ap.add_argument("--output",      required=True, type=Path)
-    ap.add_argument("--version",     action="version", version=f"%(prog)s {__version__}")
+                    help="T2T-CHM13v2.0 cytoband BED. Off-panel partners are "
+                         "characterized by band.")
+    ap.add_argument("--gene-model", default=None, type=Path,
+                    help="Bare gene bodies, for naming a breakpoint and "
+                         "measuring its distance to the gene it is named "
+                         "after. Optional; without it labels come from the "
+                         "panel interval and the distance columns stay empty.")
+    ap.add_argument("--anchors", default=None, type=Path,
+                    help="Promiscuous loci reported whatever the partner. "
+                         "Optional; without it only dictionary-named pairs "
+                         "are reportable.")
+    ap.add_argument("--excluded-junctions", default=None, type=Path,
+                    help="Coordinate-identical artefact junctions to drop. "
+                         "A dictionary-named or graded row is never dropped.")
+    ap.add_argument("--sample", required=True, type=str)
+    ap.add_argument("--output", required=True, type=Path)
+    ap.add_argument("--version", action="version",
+                    version=f"%(prog)s {__version__}")
     args = ap.parse_args()
 
     panel = load_panel(args.panel_bed)
     dictionary = load_dictionary(args.dictionary)
-    records = parse_vcf(args.vcf)
+    anchors = load_anchors(args.anchors)
+    gene_model = load_gene_model(args.gene_model)
     cytobands = load_cytobands(args.cytoband_bed)
-    rows = annotate(records, panel, dictionary, args.sample, cytobands)
+    excl = load_excluded_junctions(args.excluded_junctions)
+    records = parse_vcf(args.vcf)
 
-    columns = [
-        "sample", "sv_id", "sv_type", "filter",
-        "chrom_a", "pos_a", "gene_a",
-        "chrom_b", "pos_b", "gene_b",
-        "gene_a_source", "gene_b_source",
-        "known_mm_pair", "known_freq",
-        "callers", "n_callers", "supp_vec", "support_reads",
-    ]
-    with open(args.output, "w") as fh:
-        fh.write("\t".join(columns) + "\n")
-        for row in rows:
-            fh.write("\t".join(row.get(c, "") for c in columns) + "\n")
+    sys.stderr.write(
+        f"panel {len(panel)} regions | gene model {len(gene_model)} features | "
+        f"dictionary {len(dictionary)} pairs | anchors {len(anchors)} tokens | "
+        f"exclusions {len(set(k[0] for k in excl))} chromosome pair(s)\n")
 
-    print(f"Annotated {len(rows)} on-panel SV records -> {args.output}", file=sys.stderr)
+    rows = annotate(records, panel, dictionary, anchors, args.sample,
+                    cytobands, gene_model)
+
+    keep, dropped = [], []
+    for r in rows:
+        why = excluded_reason(excl, r)
+        (dropped if why else keep).append((r, why))
+
+    with open(args.output, "w", newline="") as fh:
+        w = csv.DictWriter(fh, fieldnames=COLUMNS, delimiter="\t",
+                           lineterminator="\n", extrasaction="ignore")
+        w.writeheader()
+        w.writerows([r for r, _ in keep])
+
+    if dropped:
+        sys.stderr.write(f"dropped {len(dropped)} junction(s) on the "
+                         f"exclusion list:\n")
+        seen = set()
+        for r, why in dropped:
+            k = (r["chrom_a"], r["pos_a"], r["chrom_b"], r["pos_b"])
+            if k in seen:
+                continue
+            seen.add(k)
+            sys.stderr.write(f"  {r['gene_a']} x {r['gene_b']}  "
+                             f"{k[0]}:{k[1]} x {k[2]}:{k[3]}  - {why}\n")
+
+    # Counted over what was written, not over what was annotated. Counting
+    # the pre-exclusion list while writing the post-exclusion one describes a
+    # table that is not on disk.
+    written = [r for r, _ in keep]
+    n_report = sum(1 for r in written if r["reportable"] == "yes")
+    n_named = sum(1 for r in written if r["known_mm_pair"])
+    n_tier = sum(1 for r in written if r["tier"])
+    sys.stderr.write(
+        f"{len(written)} on-panel record(s) written ({len(dropped)} excluded), "
+        f"{n_report} reportable, {n_named} named by dictionary, "
+        f"{n_tier} graded -> {args.output}\n")
     return 0
 
 
