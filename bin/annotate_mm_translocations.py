@@ -618,7 +618,7 @@ def excluded_reason(excl, row) -> Optional[str]:
         return None
     for (xa, xb, tol, note) in excl.get((ca, cb), []):
         if abs(pa - xa) <= tol and abs(pb - xb) <= tol:
-            return (f"listed artefact at {ca}:{xa} x {cb}:{xb} "
+            return (f"listed exclusion at {ca}:{xa} x {cb}:{xb} "
                     f"(+/-{tol} bp)" + (f"; {note}" if note else ""))
     return None
 
