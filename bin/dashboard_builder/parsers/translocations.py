@@ -50,6 +50,9 @@ NUMERIC_COLUMNS = {
     "support_sniffles",
     "support_cutesv",
     "support_severus",
+    "gene_a_dist",
+    "gene_b_dist",
+    "pon_freq",
 }
 
 # Columns present in the table but hidden by default in the rendered view.
@@ -59,6 +62,13 @@ DEFAULT_HIDDEN = {
     "supp_vec",
     "gene_a_source",
     "gene_b_source",
+    "match_quality",
+    "anchor_class",
+    "dict_notes",
+    "pon_svtype",
+    "filter_sniffles",
+    "filter_cutesv",
+    "filter_severus",
 }
 
 # Human-facing column labels. Any column absent from this map is displayed
@@ -86,6 +96,25 @@ COLUMN_LABELS = {
     "support_sniffles": "Sniffles",
     "support_cutesv": "CuteSV",
     "support_severus": "Severus",
+    "gene_a_dist": "Dist A (bp)",
+    "gene_b_dist": "Dist B (bp)",
+    "band_a": "Band A",
+    "band_b": "Band B",
+    "ig_region_a": "Ig region A",
+    "ig_region_b": "Ig region B",
+    "entity": "Entity",
+    "tier": "Tier",
+    "match_quality": "Match",
+    "anchor": "Anchor",
+    "anchor_class": "Anchor class",
+    "reportable": "Reportable",
+    "dict_notes": "Notes",
+    "pon_freq": "PoN freq",
+    "pon_svtype": "PoN type",
+    "filter_worst": "Worst caller FILTER",
+    "filter_sniffles": "Sniffles FILTER",
+    "filter_cutesv": "CuteSV FILTER",
+    "filter_severus": "Severus FILTER",
 }
 
 # Column used as the default sort key, descending, when present.
