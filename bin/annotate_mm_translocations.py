@@ -73,7 +73,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 
-__version__ = "0.7.1"
+__version__ = "0.9.0"
 # [dictionary-token-matching applied]
 # [cytoband-partner-annotation applied]
 
@@ -842,6 +842,137 @@ def igh_v_flag(gene_a, gene_b, ig_a, ig_b, hit) -> Optional[str]:
 
 
 # -----------------------------------------------------------------------------
+# Multi-partner breakends
+# -----------------------------------------------------------------------------
+def _partner_locus(name: str) -> str:
+    """Collapse a label to the locus it names.
+
+    Compound panel labels are split so IGL and IGL/IGLL5 count as one
+    locus, and TP53+TNFSF12 likewise. Comparing labels rather than binned
+    coordinates matters: binning partner positions splits a single IGH
+    locus into several bins, which made a real t(4;14) appear to have three
+    partners when it had one.
+    """
+    return (name or "").replace("+", "/").split("/")[0].strip()
+
+
+def multi_partner_positions(records, panel, cytobands, gene_model, ig_segments,
+                            tol, min_partners):
+    """Breakend positions joined to min_partners or more distinct loci.
+
+    A breakend is one end of one junction and joins one place. A position
+    appearing joined to three unrelated loci in one sample cannot be one
+    rearrangement; the reads are coming from several places and piling onto
+    one spot. On the cohort's FISH-negative sample, chr8:126,658,952 is
+    joined to 22q12.1, 2q24.1 and 3q22.1 at 16, 7 and 2 reads, and the MYC
+    break-apart probe is negative over 200 cells. Support does not
+    discriminate here; the structure does.
+
+    Three, not two. Two is reachable innocently: a reciprocal pair, or two
+    callers placing one junction slightly apart, yields a second apparent
+    partner.
+
+    Same-chromosome events are not partners and are excluded. An
+    intragenic deletion beside a breakpoint otherwise counts as one, which
+    is how an intra-NSD2 event was briefly mistaken for a second partner of
+    a real t(4;14).
+
+    Two independent translocations in one genome are unaffected, because
+    the count is per position: a sample carrying IGH::CCND1 and a MYC
+    rearrangement has two breakends with one partner each. This cohort
+    carries three such samples and none is flagged.
+    """
+    seen: Dict[Tuple[str, int], set] = {}
+    for r in records:
+        if r.mate_chrom is None or r.mate_pos is None:
+            continue
+        if r.mate_chrom == r.chrom:
+            continue
+        side_a = region_for(r.chrom, r.pos, panel)
+        side_b = region_for(r.mate_chrom, r.mate_pos, panel)
+        if side_a is None and side_b is None:
+            continue
+        ga, _sa, _ba = characterize_side(r.chrom, r.pos, side_a, cytobands,
+                                         gene_model)
+        gb, _sb, _bb = characterize_side(r.mate_chrom, r.mate_pos, side_b,
+                                         cytobands, gene_model)
+        for (c, q, partner) in ((r.chrom, r.pos, gb),
+                                (r.mate_chrom, r.mate_pos, ga)):
+            seen.setdefault((c, q // tol), set()).add(_partner_locus(partner))
+    return {k for k, v in seen.items() if len(v) >= min_partners}
+
+
+def multi_partner_flag(chrom, pos, ig_region, hit, positions, tol,
+                       min_partners) -> Optional[str]:
+    """Flag a breakend at a multi-partner position, or None.
+
+    Never fires inside an Ig switch or J region. Class-switch recombination
+    acts there and it is where primary translocations arise, so a
+    multi-partner position there is more likely a real rearrangement beside
+    an artefact than an artefact alone. The rule is therefore confined to
+    the parts of the genome where a defining translocation does not begin.
+
+    Never fires on a dictionary-named row, the same non-configurable
+    override the exclusion list, the PoN and the V-array flag use.
+    """
+    if hit or chrom is None or pos is None:
+        return None
+    if ig_region and (ig_region.endswith("_C_switch") or ig_region.endswith("_J")):
+        return None
+    if (chrom, pos // tol) not in positions:
+        return None
+    return (f"breakend at {chrom}:{pos} joins {min_partners} or more distinct "
+            f"partner loci in this sample; one breakend joins one place")
+
+
+# -----------------------------------------------------------------------------
+# MYC partner identity
+# -----------------------------------------------------------------------------
+IG_LOCI = frozenset({"IGH", "IGK", "IGL", "IGLL5"})
+
+
+def myc_partner_flag(chrom_a, chrom_b, gene_a, gene_b, hit) -> Optional[str]:
+    """Flag a MYC breakend whose partner is not an immunoglobulin locus.
+
+    MYC rearrangement in a plasma cell neoplasm is immunoglobulin enhancer
+    hijack: the locus is placed under the control of an Ig enhancer, which
+    is why the partner is IGH, IGK or IGL. Non-Ig partners are described but
+    uncommon.
+
+    In this cohort the separation is complete. Every named MYC event has an
+    Ig partner -- IGK in two samples, IGL in one, IGH in two -- and not one
+    unnamed MYC call across eighteen samples does. The unnamed partners are
+    cytobands and unrelated genes: 7q21.11, EGFR, RB1, TET2, WWOX, 19q13.33,
+    11p14.2, 6p12.3, 2q33.1.
+
+    Two samples are FISH-negative for MYC break-apart over 200 cells at 5%
+    limit of detection, and between them carry 26 unnamed MYC calls, none
+    with an Ig partner. Caller agreement does not separate them: both
+    carry three-caller calls to non-Ig partners, while a real t(8;22) in
+    another sample was called by one. Partner identity does.
+
+    A genuine non-Ig MYC rearrangement would be flagged. That is the cost,
+    and it is why this flags rather than drops: the row keeps its place with
+    the reason recorded. A non-Ig partner named in the dictionary is
+    protected by the usual override, and the dictionary already carries a
+    non-Ig MYC entry for that purpose.
+    """
+    if hit:
+        return None
+    if chrom_a is None or chrom_b is None or chrom_a == chrom_b:
+        return None
+    for myc_side, partner in ((gene_a, gene_b), (gene_b, gene_a)):
+        if _partner_locus(myc_side) != "MYC":
+            continue
+        if _norm_tokens(partner) & IG_LOCI:
+            return None
+        return (f"MYC breakend with a non-immunoglobulin partner "
+                f"({partner}); MYC rearrangement in this disease is Ig "
+                f"enhancer hijack")
+    return None
+
+
+# -----------------------------------------------------------------------------
 # Annotation
 # -----------------------------------------------------------------------------
 def region_for(chrom, pos, panel) -> Optional[PanelRegion]:
@@ -884,7 +1015,8 @@ def characterize_side(chrom, pos, region, cytobands, gene_model=None):
 
 
 def annotate(records, panel, dictionary, anchors, sample, cytobands,
-             gene_model=None, ig_segments=None, pon=None, pon_tol=2500):
+             gene_model=None, ig_segments=None, pon=None, pon_tol=2500,
+             mp_positions=None, mp_tol=2500, mp_min=3):
     out = []
     for r in records:
         side_a = region_for(r.chrom, r.pos, panel)
@@ -926,6 +1058,16 @@ def annotate(records, panel, dictionary, anchors, sample, cytobands,
                              r.sv_type, pon_tol)
 
         v_flag = igh_v_flag(gene_a, gene_b, ig_a, ig_b, hit)
+        if not v_flag:
+            v_flag = myc_partner_flag(r.chrom, r.mate_chrom,
+                                      gene_a, gene_b, hit)
+        if not v_flag and mp_positions:
+            for c, q, reg in ((r.chrom, r.pos, ig_a),
+                              (r.mate_chrom, r.mate_pos, ig_b)):
+                v_flag = multi_partner_flag(c, q, reg, hit, mp_positions,
+                                            mp_tol, mp_min)
+                if v_flag:
+                    break
 
         hits = anchor_hits(anchors, gene_a, gene_b, dist_a, dist_b)
 
@@ -1029,6 +1171,14 @@ def main() -> int:
     ap.add_argument("--pon-tol", type=int, default=2500,
                     help="Bases a breakpoint may differ from a PoN entry and "
                          "still match [2500].")
+    ap.add_argument("--multi-partner-min", type=int, default=3,
+                    help="Flag a breakend joined to this many or more "
+                         "distinct partner loci within the sample. Never "
+                         "fires in an Ig switch or J region, nor on a named "
+                         "row. 0 to disable [3].")
+    ap.add_argument("--multi-partner-tol", type=int, default=2500,
+                    help="Window in which breakends count as one position "
+                         "for the partner tally [2500].")
     ap.add_argument("--excluded-junctions", default=None, type=Path,
                     help="Coordinate-identical artefact junctions to drop. "
                          "A dictionary-named or graded row is never dropped.")
@@ -1048,6 +1198,12 @@ def main() -> int:
     pon = load_pon(args.pon)
     records = parse_vcf(args.vcf)
 
+    mp_positions = set()
+    if args.multi_partner_min and args.multi_partner_min > 0:
+        mp_positions = multi_partner_positions(
+            records, panel, cytobands, gene_model, ig_segments,
+            args.multi_partner_tol, args.multi_partner_min)
+
     sys.stderr.write(
         f"panel {len(panel)} regions | gene model {len(gene_model)} features | "
         f"ig segments {len(ig_segments)} | "
@@ -1056,7 +1212,9 @@ def main() -> int:
 
     rows = annotate(records, panel, dictionary, anchors, args.sample,
                     cytobands, gene_model, ig_segments,
-                    pon, args.pon_tol)
+                    pon, args.pon_tol,
+                    mp_positions, args.multi_partner_tol,
+                    args.multi_partner_min)
 
     keep, dropped = [], []
     n_pon = 0
