@@ -65,6 +65,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import re
 import gzip
 import sys
 from dataclasses import dataclass
@@ -72,7 +73,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 
-__version__ = "0.6.0"
+__version__ = "0.7.1"
 # [dictionary-token-matching applied]
 # [cytoband-partner-annotation applied]
 
@@ -664,22 +665,14 @@ def pon_lookup(index, chrom_a, pos_a, chrom_b, pos_b, sv_type, tol):
         return None
     inter = chrom_b is not None and chrom_b != chrom_a
     want_bnd = inter or sv_type in ("BND", "TRA")
-    # Same-chromosome events are not matched. The PoN holds 590k DEL and
-    # 696k INS entries, so within any workable tolerance almost every small
-    # indel in a 30 Mb panel finds a neighbour: on one validation sample
-    # 97.8% of DEL and 97.7% of INS matched, against 10.5% of TRA. That is
-    # coincidence at scale rather than germline identity, and it would drop
-    # two thirds of the callset. The 1,962 BND entries are sparse enough for
-    # a coordinate match to mean something.
-    if not want_bnd:
-        return None
-    # Same-chromosome events are not matched. The PoN holds 590k DEL and
-    # 696k INS entries, so within any workable tolerance almost every small
-    # indel in a 30 Mb panel finds a neighbour: on one validation sample
-    # 97.8% of DEL and 97.7% of INS matched, against 10.5% of TRA. That is
-    # coincidence at scale rather than germline identity, and it would drop
-    # two thirds of the callset. The 1,962 BND entries are sparse enough for
-    # a coordinate match to mean something.
+    # Same-chromosome events are not matched at all. The PoN holds 590k DEL
+    # and 696k INS entries against 1,962 BND, so within any tolerance wide
+    # enough for Ig breakpoints almost every small indel in a 30 Mb panel
+    # finds a neighbour: on one validation sample 97.8% of DEL and 97.7% of
+    # INS matched, against 10.5% of TRA. Left in, a 0.9 threshold dropped
+    # 136 of 139 records on one sample. That is coincidence at scale, not
+    # germline identity. The BND entries are sparse enough for a coordinate
+    # match to mean something.
     if not want_bnd:
         return None
     best = None
@@ -799,6 +792,56 @@ def pon_reason(row, min_freq) -> Optional[str]:
 
 
 # -----------------------------------------------------------------------------
+# IGH V-array flag
+# -----------------------------------------------------------------------------
+def igh_v_flag(gene_a, gene_b, ig_a, ig_b, hit) -> Optional[str]:
+    """Flag an IGH breakend in the V array whose partner is only a cytoband.
+
+    The IGH V array is 121 near-identical segments over 940 kb. V(D)J
+    recombination and somatic hypermutation act there physiologically, and
+    reads mismap between segments that differ by a few bases. Across 18
+    samples the array carried 1757 breakends and 2 dictionary names, against
+    844 breakends and 46 names in the constant/switch region: a rate of 0.1%
+    against 5.5%. The two named V-array calls were one t(6;14) reported
+    twice, its CCND3 side identical to 3 bp while the IGH side differed by
+    494 kb.
+
+    The effect scales with depth, which is what a mismapping artefact does
+    and a rearrangement does not: the deepest sample at 51x carried 65
+    anchor-only calls, the shallowest at 2.5x carried one.
+
+    Four conditions, all required.
+
+    IGH only. IGK and IGL are excluded deliberately. Light-chain MYC
+    rearrangement is enhancer hijack rather than a class-switch error, so
+    the switch geometry does not apply, and IGK::MYC appears in this cohort
+    at 30 supporting reads across all three callers. Applying this rule to
+    IGK would delete a real finding.
+
+    The partner must resolve to a cytoband. A partner that landed in a named
+    gene is evidence in itself, and this is what exempts the t(6;14) whose
+    CCND3 side is a gene.
+
+    The row must carry no dictionary name. A tier is only ever set from a
+    dictionary hit, so testing the hit covers both, and it is testable at
+    this point in the function where the tier string is not yet built.
+
+    Nothing is dropped. The row keeps its place in the table with the reason
+    recorded, and only reportable is demoted, because this is a statement
+    about where a breakend sits rather than about whether it exists.
+    """
+    if hit:
+        return None
+    band = re.compile(r"^(?:\d+|X|Y)[pq]\d")
+    for ig, partner in ((ig_a, gene_b), (ig_b, gene_a)):
+        if ig == "IGH_V" and partner and band.match(partner):
+            return (f"IGH V-array breakend with an off-panel partner "
+                    f"({partner}); V(D)J and hypermutation act here and the "
+                    f"array is 121 near-identical segments")
+    return None
+
+
+# -----------------------------------------------------------------------------
 # Annotation
 # -----------------------------------------------------------------------------
 def region_for(chrom, pos, panel) -> Optional[PanelRegion]:
@@ -882,12 +925,16 @@ def annotate(records, panel, dictionary, anchors, sample, cytobands,
         pon_hit = pon_lookup(pon, r.chrom, r.pos, r.mate_chrom, r.mate_pos,
                              r.sv_type, pon_tol)
 
+        v_flag = igh_v_flag(gene_a, gene_b, ig_a, ig_b, hit)
+
         hits = anchor_hits(anchors, gene_a, gene_b, dist_a, dist_b)
 
         # Reportable when the dictionary names it or it touches an anchor.
         # Everything else is still emitted, carrying reportable=no, so the
         # on-panel callset stays auditable rather than silently trimmed.
         reportable = "yes" if (hit or hits) else "no"
+        if v_flag:
+            reportable = "no"
 
         # tier is the dictionary's, marked with '?' when the match was only
         # partial, so a graded row always says how firmly it was graded.
@@ -913,6 +960,7 @@ def annotate(records, panel, dictionary, anchors, sample, cytobands,
             "gene_b_dist":    "" if dist_b is None else str(dist_b),
             "ig_region_a":    ig_a,
             "ig_region_b":    ig_b,
+            "flag":           v_flag or "",
             "pon_freq":       f"{pon_hit[1]:.4f}" if pon_hit else "",
             "pon_svtype":     pon_hit[0] if pon_hit else "",
             "band_a":         band_a or "",
@@ -939,7 +987,7 @@ COLUMNS = [
     "chrom_a", "pos_a", "gene_a", "chrom_b", "pos_b", "gene_b",
     "gene_a_source", "gene_b_source", "gene_a_dist", "gene_b_dist",
     "ig_region_a", "ig_region_b", "band_a", "band_b",
-    "pon_freq", "pon_svtype",
+    "flag", "pon_freq", "pon_svtype",
     "known_mm_pair", "entity", "tier", "known_freq", "match_quality",
     "anchor", "anchor_class", "reportable", "dict_notes",
     "callers", "n_callers", "supp_vec", "support_reads",

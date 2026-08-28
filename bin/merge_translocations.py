@@ -210,6 +210,13 @@ def merge_cluster(members):
         "n_callers": str(len(callers_sorted)),
         "supp_vec": rep.get("supp_vec", ""),
         "support_reads": support_reads,
+        # The representative's own count, beside the cluster maximum. They
+        # differ whenever a cluster spans calls of unequal support, and
+        # reporting only the maximum makes every member look as strong as
+        # the strongest: a 2-read call clustered with a 13-read one reads as
+        # 13, which is how a V-array artefact was nearly read as a real
+        # t(6;14).
+        "support_representative": rep.get("support_reads", ""),
         "support_sniffles": sup_snf,
         "support_cutesv": sup_cut,
         "support_severus": sup_sev,
@@ -428,7 +435,9 @@ def process_file(path, outdir, max_dist, keep_all_sv, ig_partner_tol,
         in_cols = list(reader.fieldnames or [])
         rows = [dict(r) for r in reader]
 
-    out_cols = in_cols + [c for c in ("n_merged", "merged_sv_ids") if c not in in_cols]
+    out_cols = in_cols + [c for c in ("n_merged", "merged_sv_ids",
+                                      "support_representative")
+                          if c not in in_cols]
 
     # Index TRA rows; precompute canonical ends.
     tra_idx = []
