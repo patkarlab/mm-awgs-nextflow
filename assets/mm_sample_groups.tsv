@@ -8,7 +8,11 @@
 # Tab or comma separated. Identifiers not listed here count as their own
 # group, so a single-timepoint sample needs no entry.
 #
-# Add the remaining cohort members as their timepoint pairs are produced.
-11F202602371	11F202602371_18h
-11F202612108	11F202612108_18h
-12F202601015	12F202601015_18h
+# LEAVE THIS FILE EMPTY IN THE REPOSITORY. Sequencing identifiers are lab
+# case numbers. Keep the real groupings in an untracked local copy and pass
+# it with --sample-groups, or add samplesheets/ to the same ignore rule that
+# already keeps the sheets out of version control.
+#
+# Format, with placeholder identifiers:
+#   SAMPLE_A	SAMPLE_A_18h
+#   SAMPLE_B	SAMPLE_B_18h

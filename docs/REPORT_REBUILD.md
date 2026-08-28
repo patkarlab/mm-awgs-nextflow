@@ -162,7 +162,7 @@ SV callset, not a translocation list. On the 20260713 run it produced 3,797
 pages and 2.6 GB of embedded alignment data across three samples, because the
 row counts break down as:
 
-| sv_type | rows (12F20264455) |
+| sv_type | rows (one sample) |
 |---|---|
 | DEL | 421 |
 | INS | 220 |
@@ -474,7 +474,7 @@ is now two, one per class, under the names build.py discovers. The aliased file
 is a superset of the original, so nothing is lost by dropping the duplicates;
 the untouched originals remain in the results tree.
 
-Worth checking upstream: for 11F20265231 the clinical and filtered tables are
+Worth checking upstream: for one sample the clinical and filtered tables are
 byte-identical. Either the filter writes the same content to both outputs, or
 every reportable variant in this sample is also clinical. The second is
 plausible at 15 variants, but if the two files are always identical the filter

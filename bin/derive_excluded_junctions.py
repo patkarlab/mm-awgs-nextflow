@@ -182,7 +182,10 @@ def main():
                 "chrom_b": cb, "pos_b": sbs[len(sbs) // 2],
                 "tolerance": args.tolerance,
                 "n_indep": len(indep),
-                "seen_in": ",".join(sorted({c[3] for c in cluster})),
+                # A count, not identifiers. Sequencing IDs are lab case numbers
+                # and this file is committed to a public repository. The
+                # identifiers remain in the run's stderr, which is not.
+                "seen_in": str(len({c[3] for c in cluster})),
                 "genes": f"{cluster[0][4]} x {cluster[0][5]}",
                 "spread": f"{max(sas) - min(sas)}/{max(sbs) - min(sbs)} bp",
             })
@@ -217,7 +220,7 @@ def main():
             f"# Generated from {len(args.annotated)} table(s), {n_rows} rows,\n"
             f"# of which {protected} were protected as named or graded.\n"
             "#\n"
-            "# CHROM_A\tPOS_A\tCHROM_B\tPOS_B\tTOLERANCE\tSEEN_IN\tNOTE\n")
+            "# CHROM_A\tPOS_A\tCHROM_B\tPOS_B\tTOLERANCE\tN_SAMPLES\tNOTE\n")
         for p in proposals:
             out.write(
                 f"# {p['n_indep']} independent sample(s); breakpoint spread "

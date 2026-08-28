@@ -58,7 +58,7 @@
 #   ./run_wakhan_t2t.sh <RUN_DIR> <SAMPLE_ID> [MODEL_NAME]
 #
 # Example
-#   ./run_wakhan_t2t.sh results_v7_20260713_24h 12F20264455 r1041_e82_400bps_sup_v520
+#   ./run_wakhan_t2t.sh results_v7_20260713_24h SAMPLE_ID r1041_e82_400bps_sup_v520
 #
 # Run detached so the job survives disconnection:
 #   setsid nohup ./run_wakhan_t2t.sh <RUN> <SAMPLE> < /dev/null > wakhan.log 2>&1 &
