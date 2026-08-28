@@ -84,7 +84,7 @@ process VEP_ANNOTATE_CLAIR3 {
     echo "[stage 2] VEP done"
 
     # ----- Stage 3: tidy TSV via bcftools +split-vep -----
-    export BCFTOOLS_PLUGINS=${CONDA_PREFIX}/libexec/bcftools
+    export BCFTOOLS_PLUGINS=\${CONDA_PREFIX}/libexec/bcftools
     bcftools +split-vep \\
         "\$ann_vcf" \\
         -d \\
