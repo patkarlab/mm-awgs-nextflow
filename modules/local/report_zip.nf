@@ -38,7 +38,7 @@ process REPORT_ZIP {
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
         make_report_zip: v1.1
-        zip: \$(zip --version 2>/dev/null | sed -n '2s/.*Zip \\([0-9.]*\\).*/\\1/p' || echo "unknown")
+        zip: \$( { zip --version 2>/dev/null || true; } | sed -n '2s/.*Zip \\([0-9.]*\\).*/\\1/p' || echo "unknown")
     END_VERSIONS
     """
 

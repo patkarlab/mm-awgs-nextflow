@@ -41,7 +41,7 @@ process REALIGN_T2T {
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
         minimap2: \$(minimap2 --version 2>&1)
-        samtools: \$(samtools --version | head -1 | awk '{print \$NF}')
+        samtools: \$( { samtools --version || true; } | head -1 | awk '{print \$NF}')
     END_VERSIONS
     """
 

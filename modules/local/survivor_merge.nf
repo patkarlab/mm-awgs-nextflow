@@ -68,8 +68,8 @@ EOF
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
-        SURVIVOR: \$(SURVIVOR --version 2>&1 | head -1 | awk '{print \$NF}' || echo unknown)
-        bcftools: \$(bcftools --version | head -1 | awk '{print \$NF}')
+        SURVIVOR: \$( { SURVIVOR --version 2>&1 || true; } | head -1 | awk '{print \$NF}' || echo unknown)
+        bcftools: \$( { bcftools --version || true; } | head -1 | awk '{print \$NF}')
     END_VERSIONS
     """
 

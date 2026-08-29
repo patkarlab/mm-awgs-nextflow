@@ -98,7 +98,7 @@ process IGV_SNAPSHOTS {
     "${task.process}":
         igv_snapshots: v1.1
         igv_reports: \$(create_report --version 2>/dev/null || echo "unknown")
-        samtools: \$(samtools --version | head -1 | awk '{print \$NF}')
+        samtools: \$( { samtools --version || true; } | head -1 | awk '{print \$NF}')
     END_VERSIONS
     """
 

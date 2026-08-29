@@ -137,7 +137,7 @@ process VEP_ANNOTATE_CLAIR3 {
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
         vep: ${params.vep_image}
-        bcftools: \$(bcftools --version | head -1 | awk '{print \$NF}')
+        bcftools: \$( { bcftools --version || true; } | head -1 | awk '{print \$NF}')
     END_VERSIONS
     """
 

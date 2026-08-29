@@ -50,7 +50,7 @@ process REPORT_BUNDLE {
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
         build_report_bundle: v1.0
-        zip: \$(zip --version 2>/dev/null | sed -n '2s/.*Zip \\([0-9.]*\\).*/\\1/p' || echo "not available")
+        zip: \$( { zip --version 2>/dev/null || true; } | sed -n '2s/.*Zip \\([0-9.]*\\).*/\\1/p' || echo "not available")
     END_VERSIONS
     """
 

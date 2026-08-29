@@ -61,7 +61,7 @@ process MERGE_MINKNOW {
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
-        samtools: \$(samtools --version | head -1 | awk '{print \$NF}')
+        samtools: \$( { samtools --version || true; } | head -1 | awk '{print \$NF}')
     END_VERSIONS
     """
 
