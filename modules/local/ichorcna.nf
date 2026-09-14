@@ -65,6 +65,8 @@ process ICHORCNA {
     # Stage 2: ichorCNA HMM CN calling
     "\$RSCRIPT" ${params.ichorcna_run_script} \\
         --id ${meta.id} \\
+        --genomeBuild hg38 \\
+        --genomeStyle UCSC \\
         --WIG ${meta.id}.wig \\
         --ploidy "${params.ichorcna_ploidy}" \\
         --normal "${params.ichorcna_normal}" \\
