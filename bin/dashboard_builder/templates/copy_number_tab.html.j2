@@ -1,0 +1,309 @@
+{#
+  copy_number_tab.html.j2
+
+  Allele-specific copy number from the T2T track (mmkaryo / mmbaf / mmplot).
+
+  Distinct from the ichorCNA tab. That one estimates tumour fraction from
+  off-target reads against hg38 and emits copy number as a by-product; this is
+  segmented allele-specific copy number against T2T, with a clonal cell
+  fraction per segment that is directly comparable to interphase FISH
+  percentages, and an explicit detection limit so a negative means something.
+
+  Two things are deliberately absent, because both are documented as
+  unreliable until BAF gets its own segmentation and would read as
+  authoritative here: the baseline disomic/trisomic verdict, and any purity
+  fitted with purity left free. Where the purity came from is shown instead.
+
+  Context required:
+    copy_number - output of parsers/copy_number.py (or None)
+    sample      - sequencing identifier
+
+  Include inside the tab-content container of sample_report.html.j2.
+#}
+{#
+  Resolves its context under either convention, as ichor_tab does: this builder
+  passes the per-sample context as a single `ctx` object, so a bare variable
+  name is undefined and every guard falls through to the empty state.
+#}
+{% set cn = copy_number if (copy_number is defined and copy_number) else ((ctx.copy_number if ctx is defined else none) or none) %}
+{% set sample = sample if (sample is defined and sample) else ((ctx.sample if ctx is defined else none) or '') %}
+<div class="tab-pane fade" id="tab-copy-number" role="tabpanel">
+
+  {% if not cn %}
+    <div class="alert alert-danger mt-3">
+      <strong>Context not supplied.</strong>
+      The builder did not pass <code>copy_number</code> into this template,
+      under either <code>copy_number</code> or <code>ctx.copy_number</code>.
+      Check that <code>build.py</code> assigns <code>ctx["copy_number"]</code>
+      and that render() passes it through.
+    </div>
+
+  {% elif not cn.found %}
+    <div class="alert alert-secondary mt-3">
+      <strong>No allele-specific copy number output found.</strong>
+      Expected <code>&lt;sample&gt;.karyotype.json</code> under
+      <code>copy_number/</code>.
+      <div class="small text-muted mt-1">Searched: <code>{{ cn.searched }}</code></div>
+    </div>
+
+  {% else %}
+
+    <div class="d-flex align-items-baseline justify-content-between mt-3 mb-2">
+      <div>
+        <h5 class="mb-0">Copy number &mdash; allele-specific</h5>
+        <small class="text-muted">
+          From off-target reads against T2T-CHM13v2.0
+          {% if cn.headline.purity is not none %}
+            &middot; purity <strong>{{ '%.2f'|format(cn.headline.purity) }}</strong>
+            <span class="{{ 'text-success' if cn.headline.purity_supplied else 'text-warning' }}">
+              ({{ cn.headline.purity_source }})
+            </span>
+          {% endif %}
+          {% if cn.headline.ploidy is not none %}
+            &middot; ploidy <strong>{{ '%.2f'|format(cn.headline.ploidy) }}</strong>
+          {% endif %}
+          {% if cn.headline.sex %}&middot; {{ cn.headline.sex }}{% endif %}
+        </small>
+      </div>
+    </div>
+
+    {% for warning in cn.warnings %}
+      <div class="alert alert-warning py-2 small">{{ warning }}</div>
+    {% endfor %}
+
+    {#
+      ISCN carries a copy button rather than an Include checkbox.
+      render_cnv_plot_card stores a path and the Reporting tab renders it as an
+      image, so a text entry pushed through the same keys would come back
+      broken. This is the line that gets pasted into the clinical report, so
+      what it needs is the clipboard.
+    #}
+    {% if cn.headline.iscn %}
+      <div class="card mb-3">
+        <div class="card-body py-2">
+          <div class="d-flex justify-content-between align-items-center mb-1">
+            <div class="small text-muted">ISCN</div>
+            <button type="button" class="btn btn-outline-secondary btn-sm py-0"
+                    id="cn-iscn-copy" data-cn-iscn="{{ cn.headline.iscn }}">
+              Copy
+            </button>
+          </div>
+          <code id="cn-iscn-text" style="font-size:0.95rem">{{ cn.headline.iscn }}</code>
+          {% if cn.headline.hyperdiploid %}
+            <div class="mt-2">
+              <span class="badge bg-danger">Hyperdiploid</span>
+              <span class="small text-muted ms-1">
+                trisomies {{ cn.headline.trisomies | join(', ') }}
+              </span>
+            </div>
+          {% endif %}
+        </div>
+      </div>
+    {% endif %}
+
+    {#
+      Detection limit first. It is what makes a negative interpretable: if it
+      sits above the FISH percentage being compared against, the comparison is
+      not yet meaningful and no amount of reading the figure will fix that.
+    #}
+    <div class="row g-2 mb-3">
+      {% set cards = [
+        ('Detection limit, 5 Mb',
+         (cn.qc.detection_limit_5mb * 100) | round(1) ~ '%' if cn.qc.detection_limit_5mb is not none else '&ndash;',
+         'smallest single-copy change detectable, as a fraction of cells'),
+        ('Reads per bin',
+         cn.qc.median_reads_per_bin if cn.qc.median_reads_per_bin is not none else '&ndash;',
+         'median, off-target'),
+        ('Overdispersion',
+         (cn.qc.overdispersion ~ '&times;') if cn.qc.overdispersion is not none else '&ndash;',
+         'observed noise over the Poisson floor; near 1 is counting-limited'),
+        ('Segments', cn.headline.n_segments if cn.headline.n_segments is not none else '&ndash;', ''),
+      ] %}
+      {% for label, value, note in cards %}
+        <div class="col-6 col-lg-3">
+          <div class="card h-100">
+            <div class="card-body py-2">
+              <div class="small text-muted">{{ label }}</div>
+              <div class="fs-5">{{ value | safe }}</div>
+              {% if note %}<div class="small text-muted">{{ note }}</div>{% endif %}
+            </div>
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+
+    {% if cn.figures.genome %}
+      <div class="row g-3 mb-3">
+        {{ macros.render_cnv_plot_card('copy_number::genome',
+             'Genome-wide copy number and allele fraction',
+             cn.figures.genome, 'col-12') }}
+      </div>
+      <div class="small text-muted mb-3">
+        The targets track marks the adaptive sampling panel, which is masked
+        from the analysis &mdash; copy number calls are blind inside it.
+      </div>
+    {% endif %}
+
+    {#
+      Chromosome pages rather than the grid. The grid is a genome overview and
+      gets crowded at 24 cells; these are what a reader opens to look at a
+      specific event, at full width with gene highlight bands, the panel
+      targets track and a labelled cytogram.
+
+      Every page stays in the DOM and is shown or hidden by the pager, so the
+      Include checkboxes are all registered on load regardless of which page is
+      visible.
+    #}
+    {% if cn.chromosomes %}
+      <h6 class="mt-4">Chromosome pages ({{ cn.chromosomes | length }})</h6>
+      <p class="small text-muted mb-2">
+        Depth, allele fraction and copy number per chromosome. Tick
+        <em>Include</em> on any page to carry it into the Reporting tab.
+      </p>
+      <nav class="mb-3" id="cn-chr-pager">
+        {% for page in cn.chromosomes %}
+          <button type="button"
+                  class="btn btn-sm {{ 'btn-primary' if loop.first else 'btn-outline-primary' }} me-1 mb-1 cn-chr-btn"
+                  data-cn-chr="{{ page.chrom }}">{{ page.label }}</button>
+        {% endfor %}
+      </nav>
+      {% for page in cn.chromosomes %}
+        <div class="row g-3 cn-chr-page" data-cn-page="{{ page.chrom }}"
+             {% if not loop.first %}style="display:none"{% endif %}>
+          {{ macros.render_cnv_plot_card('copy_number::' ~ page.chrom,
+               page.chrom, page.src, 'col-12') }}
+        </div>
+      {% endfor %}
+    {% endif %}
+
+    {% if cn.figures.grid %}
+      <details class="mt-3 mb-3">
+        <summary class="small text-muted">All chromosomes at once (overview grid)</summary>
+        <div class="row g-3 mt-1">
+          {{ macros.render_cnv_plot_card('copy_number::grid',
+               'Per-chromosome overview grid', cn.figures.grid, 'col-12') }}
+        </div>
+      </details>
+    {% endif %}
+
+    {% if cn.cytobands %}
+      <h6 class="mt-4">Altered cytobands</h6>
+      <div class="small text-muted mb-2">
+        Copy number by band, in the vocabulary the cytogenetics report uses.
+        Cell fraction is comparable to the percentage of nuclei scored positive
+        by interphase FISH. It is blank where a single-copy change on a diploid
+        background cannot explain the depth, in which case read implied copies.
+      </div>
+      <div class="table-responsive">
+        <table class="table table-sm table-striped datatable">
+          <thead>
+            <tr>
+              <th>Band</th><th>Region</th><th>Copy number</th>
+              <th>Implied copies</th><th>Event</th>
+              <th>Cell fraction</th><th>Detection limit</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for band in cn.cytobands %}
+              <tr>
+                <td><strong>{{ band.cytoband }}</strong></td>
+                <td class="small text-muted">
+                  {{ band.chromosome }}:{{ band.start }}-{{ band.end }}
+                </td>
+                <td>{{ band.copy_number }}</td>
+                <td>{{ band.implied_copies if band.implied_copies is defined else '' }}</td>
+                <td>
+                  <span class="badge bg-{{ 'danger' if band.event == 'loss' else 'success' }}">
+                    {{ band.event }}
+                  </span>
+                </td>
+                <td>{{ band.cell_fraction }}</td>
+                <td class="small text-muted">{{ band.detection_limit }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% endif %}
+
+    {% if cn.arms %}
+      <details class="mt-3">
+        <summary class="small text-muted">Arm-level summary</summary>
+        <div class="table-responsive mt-2">
+          <table class="table table-sm table-striped">
+            <thead>
+              <tr>
+                <th>Arm</th><th>log2</th><th>Copy number</th>
+                <th>Event</th><th>Cell fraction</th><th>Detection limit</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for arm in cn.arms %}
+                <tr>
+                  <td>{{ arm.arm }}</td>
+                  <td>{{ arm.log2_ratio }}</td>
+                  <td>{{ arm.copy_number }}</td>
+                  <td>{{ arm.event }}</td>
+                  <td>{{ arm.cell_fraction }}</td>
+                  <td class="small text-muted">{{ arm.detection_limit }}</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </details>
+    {% endif %}
+
+  {% endif %}
+
+  {# Scoped to this tab: the pager ids and classes are prefixed cn- so they
+     cannot collide with the shared vb-cnv- include machinery. #}
+  <script>
+  (function () {
+    var pager = document.getElementById("cn-chr-pager");
+    if (pager) {
+      pager.addEventListener("click", function (event) {
+        var button = event.target.closest(".cn-chr-btn");
+        if (!button) { return; }
+        var wanted = button.getAttribute("data-cn-chr");
+        document.querySelectorAll(".cn-chr-btn").forEach(function (b) {
+          var active = b.getAttribute("data-cn-chr") === wanted;
+          b.classList.toggle("btn-primary", active);
+          b.classList.toggle("btn-outline-primary", !active);
+        });
+        document.querySelectorAll(".cn-chr-page").forEach(function (p) {
+          p.style.display =
+            (p.getAttribute("data-cn-page") === wanted) ? "" : "none";
+        });
+      });
+    }
+
+    var copy = document.getElementById("cn-iscn-copy");
+    if (copy) {
+      copy.addEventListener("click", function () {
+        var text = copy.getAttribute("data-cn-iscn") || "";
+        var done = function () {
+          var previous = copy.textContent;
+          copy.textContent = "Copied";
+          setTimeout(function () { copy.textContent = previous; }, 1200);
+        };
+        // navigator.clipboard needs a secure context, which file:// is not, so
+        // the textarea fallback is the path this usually takes.
+        if (navigator.clipboard && window.isSecureContext) {
+          navigator.clipboard.writeText(text).then(done, function () {});
+          return;
+        }
+        var scratch = document.createElement("textarea");
+        scratch.value = text;
+        scratch.setAttribute("readonly", "");
+        scratch.style.position = "absolute";
+        scratch.style.left = "-9999px";
+        document.body.appendChild(scratch);
+        scratch.select();
+        try { document.execCommand("copy"); done(); } catch (e) {}
+        document.body.removeChild(scratch);
+      });
+    }
+  })();
+  </script>
+</div>

@@ -165,11 +165,25 @@ def infer_callers(info: Dict[str, str]) -> List[str]:
     """
     Decode SUPP_VEC bitstring written by SURVIVOR. Bit order matches the
     order of input VCFs passed to SURVIVOR merge; in our pipeline that is
-    [Sniffles, CuteSV, Severus].
+    [Sniffles, CuteSV, Severus, SAVANA].
+
+    SAVANA was appended last when it was added, so the first three positions
+    keep the meaning they had when this vector was three bits wide and no
+    existing output is reinterpreted.
+
+    Note that zip() below stops at the shorter sequence. If a vector ever
+    arrives wider than caller_order, the extra bits are dropped silently, so
+    this list must be kept in step with vcflist.txt in survivor_merge.nf.
     """
     out = []
     supp_vec = info.get("SUPP_VEC", "")
-    caller_order = ["Sniffles", "CuteSV", "Severus"]
+    caller_order = ["Sniffles", "CuteSV", "Severus", "SAVANA"]
+    if len(supp_vec) > len(caller_order):
+        sys.stderr.write(
+            "WARNING: SUPP_VEC is %d bits but only %d callers are named; "
+            "bits beyond the list are being ignored. survivor_merge.nf and "
+            "caller_order have drifted apart.\n"
+            % (len(supp_vec), len(caller_order)))
     for bit, name in zip(supp_vec, caller_order):
         if bit == "1":
             out.append(name)

@@ -11,7 +11,8 @@ process AUGMENT_SV_SUPPORT {
           path(annotated, stageAs: 'annotated_in.tsv'),
           path(sniffles_vcf),
           path(cutesv_vcf),
-          path(severus_vcf)
+          path(severus_vcf),
+          path(savana_vcf)
 
     output:
     tuple val(meta), path("${meta.id}.mm_annotated.tsv"), emit: annotated
@@ -27,6 +28,7 @@ process AUGMENT_SV_SUPPORT {
         --sniffles  ${sniffles_vcf} \\
         --cutesv    ${cutesv_vcf} \\
         --severus   ${severus_vcf} \\
+        --savana    ${savana_vcf} \\
         --output    ${meta.id}.mm_annotated.tsv \\
         --tol       ${params.support_tol}
 

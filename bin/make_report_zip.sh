@@ -126,7 +126,7 @@ zip -r -q "$ZIP" "$NAME" "${EXCLUDES[@]}"
 # Windows Explorer still refuses paths beyond 260 characters when extracting,
 # and these bundles nest sample/igv/translocations/<event>.A.html. Warn before
 # the archive reaches a machine that cannot unpack it.
-LONGEST=$(unzip -l "$ZIP" | awk '{print $4}' | awk '{ print length }' | sort -rn | head -1)
+LONGEST=$(unzip -l "$ZIP" | awk '{print $4}' | awk '{ print length }' | sort -rn | { head -1; cat > /dev/null; })
 BUDGET=$((260 - 40))
 if [[ -n "$LONGEST" && "$LONGEST" -gt "$BUDGET" ]]; then
   echo "WARNING: longest internal path is ${LONGEST} characters." >&2
@@ -141,7 +141,7 @@ echo ""
 echo "Entries: $(unzip -l "$ZIP" | tail -1 | awk '{print $2}')"
 echo ""
 echo "Top level:"
-unzip -l "$ZIP" | awk '{print $4}' | grep -E "^${NAME}/[^/]+/?$" | sort -u | head -20
+unzip -l "$ZIP" | awk '{print $4}' | grep -E "^${NAME}/[^/]+/?$" | sort -u | { head -20; cat > /dev/null; }
 
 if [[ "$LIGHT" -eq 1 ]]; then
   echo ""

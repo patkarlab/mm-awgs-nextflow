@@ -90,6 +90,10 @@ def caller_support(value_kind, info, fmt, sample):
     if value_kind == "SUPPORT":
         v = info.get("SUPPORT", "")
         return int(v) if str(v).isdigit() else None
+    if value_kind == "TUMOUR_READ_SUPPORT":
+        # SAVANA. An INFO field, like RE and SUPPORT, so no FORMAT lookup.
+        v = info.get("TUMOUR_READ_SUPPORT", "")
+        return int(v) if str(v).isdigit() else None
     if value_kind == "DV":
         if fmt and sample:
             f = dict(zip(fmt.split(":"), sample.split(":")))
@@ -165,6 +169,10 @@ def main():
     ap.add_argument("--sniffles", default=None)
     ap.add_argument("--cutesv", default=None)
     ap.add_argument("--severus", default=None)
+    ap.add_argument("--savana", default=None,
+                    help="SAVANA classified VCF (not classified.somatic.vcf; "
+                         "the somatic model rejects low-support translocations "
+                         "on this data)")
     ap.add_argument("--output", required=True)
     ap.add_argument("--tol", type=int, default=25, help="bp tolerance per breakpoint (default 25).")
     args = ap.parse_args()
@@ -172,15 +180,22 @@ def main():
     snf = load_caller(args.sniffles, "SUPPORT")
     cut = load_caller(args.cutesv, "RE")
     sev = load_caller(args.severus, "DV")
-    sys.stderr.write(f"loaded support records: sniffles={len(snf)} cutesv={len(cut)} severus={len(sev)}\n")
+    sav = load_caller(args.savana, "TUMOUR_READ_SUPPORT")
+    sys.stderr.write(
+        f"loaded support records: sniffles={len(snf)} cutesv={len(cut)} "
+        f"severus={len(sev)} savana={len(sav)}\n")
 
     with open(args.annotated, newline="") as fh:
         reader = csv.DictReader(fh, delimiter="\t")
         in_cols = list(reader.fieldnames or [])
         rows = [dict(r) for r in reader]
 
+    # filter_savana carries SAVANA's somatic verdict without a column of its
+    # own: SAVANA writes PASS or PREDICTED_NOISE into the VCF FILTER field.
     new_cols = ["support_sniffles", "support_cutesv", "support_severus",
+                "support_savana",
                 "filter_sniffles", "filter_cutesv", "filter_severus",
+                "filter_savana",
                 "filter_worst"]
     out_cols = in_cols + [c for c in new_cols if c not in in_cols]
 
@@ -205,13 +220,16 @@ def main():
         s, sf = gated("sniffles", snf)
         c, cf = gated("cutesv", cut)
         v, vf = gated("severus", sev)
+        a, af = gated("savana", sav)
         r["support_sniffles"] = str(s) if s is not None else ""
         r["support_cutesv"]   = str(c) if c is not None else ""
         r["support_severus"]  = str(v) if v is not None else ""
+        r["support_savana"]   = str(a) if a is not None else ""
         r["filter_sniffles"]  = sf or ""
         r["filter_cutesv"]    = cf or ""
         r["filter_severus"]   = vf or ""
-        present = [x for x in (s, c, v) if x is not None]
+        r["filter_savana"]    = af or ""
+        present = [x for x in (s, c, v, a) if x is not None]
         if present:
             r["support_reads"] = str(max(present))
             n_pop += 1

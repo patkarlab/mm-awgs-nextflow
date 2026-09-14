@@ -6,8 +6,10 @@ process QC_ONTARGET {
     publishDir "${params.outdir}/t2t/qc/${meta.id}", mode: 'copy'
 
     input:
-    tuple val(meta), path(bam), path(bai)
-    path panel_bed
+    // On-target coverage is only meaningful against the panel this sample was
+    // actually enriched with. A global BED made every non-v7 coverage figure
+    // in the cohort uninterpretable.
+    tuple val(meta), path(bam), path(bai), path(panel_bed)
 
     output:
     tuple val(meta), path("${meta.id}.region_coverage.tsv"),  emit: coverage

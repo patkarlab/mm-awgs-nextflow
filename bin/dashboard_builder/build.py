@@ -51,6 +51,7 @@ from parsers import cancervar as p_cancervar
 from parsers import baf_loh as p_baf_loh
 from parsers import translocations as p_translocations
 from parsers import ichor as p_ichor
+from parsers import copy_number as p_copy_number
 from parsers import qc as p_qc
 
 
@@ -430,6 +431,11 @@ def collect_sample_context(sample_dir, build_time, subdir="",
     # matching template renders an empty state rather than failing.
     ctx["translocations"] = p_translocations.parse(effective_dir, sample)
     ctx["ichor"] = p_ichor.parse(effective_dir, sample)
+    # Allele-specific copy number from the T2T track. Separate from ichor:
+    # that is a tumour-fraction estimator emitting copy number against hg38,
+    # this is segmented allele-specific copy number against T2T with a clonal
+    # cell fraction per segment and an explicit detection limit.
+    ctx["copy_number"] = p_copy_number.parse(effective_dir, sample)
     ctx["qc"] = p_qc.parse(effective_dir, sample)
     return ctx
 

@@ -24,11 +24,13 @@ include { ANNOTATE_MM_TRANSLOCATIONS  } from '../../modules/local/annotate_mm_tr
 include { AUGMENT_SV_SUPPORT   } from '../../modules/local/augment_sv_support'
 include { MERGE_TRANSLOCATIONS } from '../../modules/local/merge_translocations'
 include { QC_ONTARGET          } from '../../modules/local/qc_ontarget'
+include { SAVANA               } from '../../modules/local/savana'
 
 workflow T2T_TRACK {
 
     take:
     minknow_bams   // [meta, minknow_bam]
+    ch_panel_bed   // [meta, panel_bed]  T2T panel this sample was sequenced with
 
     main:
     // REALIGN_T2T emits [meta, bam, bai] directly — indexing is done in the
@@ -41,20 +43,31 @@ workflow T2T_TRACK {
     // and histogram PNGs. Independent of SV calling; runs off the realigned
     // BAM and the v6 panel BED. Gated so it can be skipped.
     if (!params.skip_qc) {
-        QC_ONTARGET(t2t_bam_bai, file(params.panel_bed_t2t))
+        // Joined on meta: on-target coverage is only meaningful against the
+        // panel this sample was actually enriched with. Measuring a v4 sample
+        // against the v7 BED is what made every non-v7 coverage figure in the
+        // cohort uninterpretable.
+        QC_ONTARGET(
+            t2t_bam_bai
+                .map { meta, bam, bai -> tuple(meta.id, meta, bam, bai) }
+                .join(ch_panel_bed.map { meta, bed -> tuple(meta.id, bed) })
+                .map { id, meta, bam, bai, bed -> tuple(meta, bam, bai, bed) }
+        )
     }
 
     if (!params.skip_sv_calling) {
         SNIFFLES(t2t_bam_bai)
         CUTESV(t2t_bam_bai)
         SEVERUS(t2t_bam_bai)
+        SAVANA(t2t_bam_bai)
 
         // Combine per-sample VCFs for merging
         per_sample_for_merge = SNIFFLES.out.vcf
             .join(CUTESV.out.vcf,      by: 0)
             .join(SEVERUS.out.vcf,     by: 0)
-            .map { meta, sn_vcf, sn_tbi, cu_vcf, cu_tbi, sv_vcf ->
-                tuple(meta, sn_vcf, cu_vcf, sv_vcf)
+            .join(SAVANA.out.vcf,      by: 0)
+            .map { meta, sn_vcf, sn_tbi, cu_vcf, cu_tbi, sv_vcf, sa_vcf ->
+                tuple(meta, sn_vcf, cu_vcf, sv_vcf, sa_vcf)
             }
 
         SURVIVOR_MERGE(per_sample_for_merge)
@@ -70,8 +83,9 @@ workflow T2T_TRACK {
                 .join(SNIFFLES.out.vcf, by: 0)
                 .join(CUTESV.out.vcf,   by: 0)
                 .join(SEVERUS.out.vcf,  by: 0)
-                .map { meta, annotated, sn_vcf, sn_tbi, cu_vcf, cu_tbi, sv_vcf ->
-                    tuple(meta, annotated, sn_vcf, cu_vcf, sv_vcf)
+                .join(SAVANA.out.vcf,   by: 0)
+                .map { meta, annotated, sn_vcf, sn_tbi, cu_vcf, cu_tbi, sv_vcf, sa_vcf ->
+                    tuple(meta, annotated, sn_vcf, cu_vcf, sv_vcf, sa_vcf)
                 }
 
             AUGMENT_SV_SUPPORT(ch_augment_in)
@@ -86,6 +100,11 @@ workflow T2T_TRACK {
     sniffles_vcf     = params.skip_sv_calling     ? Channel.empty() : SNIFFLES.out.vcf
     cutesv_vcf       = params.skip_sv_calling     ? Channel.empty() : CUTESV.out.vcf
     severus_outdir   = params.skip_sv_calling     ? Channel.empty() : SEVERUS.out.outdir
+    // The unfiltered classified VCF. savana_somatic_vcf is emitted alongside
+    // it for comparison and is deliberately not consumed by the ensemble.
+    savana_vcf       = params.skip_sv_calling     ? Channel.empty() : SAVANA.out.vcf
+    savana_somatic_vcf = params.skip_sv_calling   ? Channel.empty() : SAVANA.out.somatic_vcf
+    savana_outdir    = params.skip_sv_calling     ? Channel.empty() : SAVANA.out.outdir
     merged_vcf       = params.skip_sv_calling     ? Channel.empty() : SURVIVOR_MERGE.out.merged_vcf
     mm_annotated_tsv = (params.skip_sv_calling || params.skip_mm_annotation) ? Channel.empty() : AUGMENT_SV_SUPPORT.out.annotated
     translocations   = (params.skip_sv_calling || params.skip_mm_annotation) ? Channel.empty() : MERGE_TRANSLOCATIONS.out.translocations

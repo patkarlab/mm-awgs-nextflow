@@ -3,7 +3,11 @@ process CLAIRS_TO {
     label    'process_medium'
 
     input:
-    tuple val(meta), path(bam), path(bai)
+    // panel_bed is staged rather than read from params so each sample is
+    // called over the panel it was sequenced with. Staging also removes the
+    // dependency on /goast being bind-mounted for the BED specifically: the
+    // staged file sits in the work dir, which is already mounted at /work.
+    tuple val(meta), path(bam), path(bai), path(panel_bed)
 
     output:
     tuple val(meta), path("clairs_to_out"),                                                emit: outdir
@@ -31,7 +35,7 @@ process CLAIRS_TO {
         /opt/bin/run_clairs_to \\
             --tumor_bam_fn ${bam} \\
             --ref_fn ${params.hg38_fasta} \\
-            --bed_fn ${params.panel_bed_hg38} \\
+            --bed_fn ${panel_bed} \\
             --threads ${params.clairs_to_threads} \\
             --platform ${params.clairs_to_platform} \\
             --output_dir clairs_to_out \\

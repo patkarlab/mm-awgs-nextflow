@@ -30,6 +30,7 @@ workflow HG38_TRACK {
 
     take:
     minknow_bams   // [meta, minknow_bam]
+    ch_panel_bed   // [meta, panel_bed]  hg38 panel this sample was sequenced with
 
     main:
     // REALIGN_HG38 emits [meta, bam, bai] directly — indexing is done in the
@@ -40,7 +41,15 @@ workflow HG38_TRACK {
     hg38_bam_bai = REALIGN_HG38.out.bam_bai   // [meta, bam, bai]
 
     if (!params.skip_clairs_to) {
-        CLAIRS_TO(hg38_bam_bai)
+        // Joined on meta so calling is restricted to the panel this sample was
+        // sequenced with. Calling a v4 sample over the v7 BED would report
+        // regions that were never enriched, at off-target depth.
+        CLAIRS_TO(
+            hg38_bam_bai
+                .map { meta, bam, bai -> tuple(meta.id, meta, bam, bai) }
+                .join(ch_panel_bed.map { meta, bed -> tuple(meta.id, bed) })
+                .map { id, meta, bam, bai, bed -> tuple(meta, bam, bai, bed) }
+        )
     }
     if (!params.skip_ichorcna) {
         ICHORCNA(hg38_bam_bai)
@@ -71,11 +80,14 @@ workflow HG38_TRACK {
             Channel.value([]) :
             ICHORCNA.out.outdir.map { _meta, dir -> dir }.collect().ifEmpty([])
 
+        // Cohort-level: one BED for every sample, and it must be one where
+        // every sample has the same capture status at every region. See
+        // params.cohort_bed_hg38 in nextflow.config.
         BAF_LOH_SCREEN(
             ids_ch,
             clair3_ch,
             ichor_ch,
-            file(params.panel_bed_hg38)
+            file(params.cohort_bed_hg38, checkIfExists: true)
         )
         baf_screen_ch = BAF_LOH_SCREEN.out.screen
 
@@ -85,7 +97,7 @@ workflow HG38_TRACK {
                 BAF_LOH_SCREEN.out.sample_map,
                 clair3_ch,
                 ichor_ch,
-                file(params.panel_bed_hg38)
+                file(params.cohort_bed_hg38, checkIfExists: true)
             )
         }
     }

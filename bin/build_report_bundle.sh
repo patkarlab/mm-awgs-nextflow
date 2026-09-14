@@ -12,6 +12,7 @@
 #   <bundle>/<sample>/cnv/            ichorCNA figure and fit parameters
 #   <bundle>/<sample>/qc/             on-target QC plots and tables
 #   <bundle>/<sample>/baf_loh/        per-sample BAF/LOH figures
+#   <bundle>/<sample>/copy_number/    allele-specific CN figures and tables
 #   <bundle>/<sample>/igv/            IGV snapshot pages and manifest
 #   <bundle>/baf_loh/                 cohort BAF screen tables
 #   <bundle>/filter_summary.tsv       cohort SNV filter summary
@@ -212,6 +213,15 @@ for s in "${SAMPLES[@]}"; do
 
   # BAF / LOH: per-sample figures. The cohort tables are copied once below.
   copy_all "$d/baf_loh" "$s" -path '*baf_loh*' -name '*.png'
+
+  # Allele-specific copy number. The karyotype JSON carries the ISCN string,
+  # the hyperdiploidy call and the QC block the dashboard tab renders; the
+  # cytoband table is the per-band view in the cytogenetic vocabulary.
+  copy_all   "$d/copy_number" "$s" -path '*copy_number*' -name '*.png'
+  copy_first "$d/copy_number" "${s}.karyotype.json"   "$s" -path '*copy_number*' -name '*.karyotype.json'
+  copy_first "$d/copy_number" "${s}.cytobands.tsv"    "$s" -path '*copy_number*' -name '*.cytobands.tsv'
+  copy_first "$d/copy_number" "${s}.segments.baf.tsv" "$s" -path '*copy_number*' -name '*.segments.baf.tsv'
+  copy_first "$d/copy_number" "${s}.arms.tsv"         "$s" -path '*copy_number*' -name '*.arms.tsv'
 
   # IGV: breakpoint pages, the somatic page, and the manifest that maps
   # events to pages. Directory structure is flattened per evidence class so

@@ -112,3 +112,15 @@ versions.yml
 # Liftover chains (download externally)
 *.chain
 *.chain.gz
+bin/mmkaryo/
+cn_test/
+cn_test_run.log
+cn_sheet.csv
+cn_stub_sheet.csv
+karyotype_eval/
+savana/
+logs/
+results*/
+report_results*/
+report_cn_test*/
+*.zip

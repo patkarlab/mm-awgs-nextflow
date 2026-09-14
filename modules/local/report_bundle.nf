@@ -37,6 +37,11 @@ process REPORT_BUNDLE {
 
     export PANEL_BED_T2T="\$(readlink -f ${panel_bed_t2t})"
     export PANEL_BED_HG38="\$(readlink -f ${panel_bed_hg38})"
+    # Sliced BAMs are excluded by default. A panel slice is not a reduction
+    # under adaptive sampling, where nearly all depth is on-target: the
+    # 21-sample cohort bundle reached 13 GB, and zipping BGZF gains nothing.
+    # The IGV pages already carry embedded reads at each call.
+    export BUNDLE_NO_BAMS="${params.bundle_no_bams ? '1' : ''}"
 
     if [ ! -d "${results_dir}" ]; then
         echo "ERROR: results directory not found: ${results_dir}" >&2

@@ -3,9 +3,10 @@ process SURVIVOR_MERGE {
     label    'process_low'
 
     input:
-    // Three caller VCFs in fixed order: Sniffles, CuteSV, Severus.
-    // Sniffles and CuteSV are .vcf.gz; Severus is plain .vcf.
-    tuple val(meta), path(sniffles_vcf_gz), path(cutesv_vcf_gz), path(severus_vcf)
+    // Four caller VCFs in fixed order: Sniffles, CuteSV, Severus, SAVANA.
+    // Sniffles and CuteSV are .vcf.gz; Severus and SAVANA are plain .vcf.
+    // SAVANA is LAST so the first three SUPP_VEC bit positions are unchanged.
+    tuple val(meta), path(sniffles_vcf_gz), path(cutesv_vcf_gz), path(severus_vcf), path(savana_vcf)
 
     output:
     tuple val(meta), path("${meta.id}.merged.vcf.gz"), path("${meta.id}.merged.vcf.gz.tbi"), emit: merged_vcf
@@ -23,14 +24,22 @@ process SURVIVOR_MERGE {
     else
         cp ${severus_vcf} severus.vcf
     fi
+    if [[ "${savana_vcf}" == *.gz ]]; then
+        zcat ${savana_vcf} > savana.vcf
+    else
+        cp ${savana_vcf} savana.vcf
+    fi
 
     # The caller order written to vcflist.txt is the order SURVIVOR uses for
     # SUPP_VEC bits. We MUST keep this exact order — downstream MM annotation
-    # decodes 100/010/001 as sniffles/cutesv/severus respectively.
+    # decodes 1000/0100/0010/0001 as sniffles/cutesv/severus/savana
+    # respectively. SAVANA was appended last precisely so the first three
+    # positions still mean what they meant when the vector was three bits.
     cat > vcflist.txt <<'EOF'
 sniffles.vcf
 cutesv.vcf
 severus.vcf
+savana.vcf
 EOF
 
     # SURVIVOR merge args (matches production survivor_merge_t2t.sh):
@@ -63,7 +72,7 @@ EOF
     tabix -p vcf -f ${meta.id}.merged.vcf.gz
 
     # Cleanup intermediate plain VCFs
-    rm -f sniffles.vcf cutesv.vcf severus.vcf ${meta.id}.merged.vcf
+    rm -f sniffles.vcf cutesv.vcf severus.vcf savana.vcf ${meta.id}.merged.vcf
     rm -rf bcftools_tmp
 
     cat <<-END_VERSIONS > versions.yml
