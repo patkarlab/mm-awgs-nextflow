@@ -96,24 +96,56 @@ def minor_copy_number(theta, total, purity):
     return (theta * denominator - (1.0 - purity)) / purity
 
 
-def call_class(total, minor, theta):
-    """Classify a segment the way the BAF legend reads."""
+def modal_copy_number(segments, key="total"):
+    """Length-weighted modal autosomal copy number across the segments.
+
+    This is the level the genome actually sits at, which is what a gain or a
+    loss has to be measured against. It is not always 2: on a near-triploid
+    genome most of the sequence is at 3, and calling that a gain paints the
+    whole figure green.
+    """
+    covered = {}
+    for s in segments:
+        if s["chrom"] in ("chrX", "chrY"):
+            continue
+        value = s.get(key, float("nan"))
+        if not math.isfinite(value):
+            continue
+        span = max(0, s["end"] - s["start"])
+        level = int(round(value))
+        covered[level] = covered.get(level, 0) + span
+    if not covered:
+        return 2
+    return max(covered, key=lambda k: covered[k])
+
+
+def call_class(total, minor, theta, baseline=2):
+    """Classify a segment the way the legend reads, relative to the baseline.
+
+    baseline is the genome's own modal copy number rather than 2. Comparing
+    to 2 on a genome whose modal level is 3 reports every neutral chromosome
+    as a gain, which is what turned the genome-wide figure for 11F20265231
+    green from end to end.
+    """
     if not math.isfinite(total):
         return "balanced het"
     t = int(round(total))
+    b = int(round(baseline)) if (baseline and math.isfinite(baseline)) else 2
     if math.isfinite(theta) and theta < 0.05:
         if t <= 0:
             return "homozygous"
-    if t < 2:
+    if t < b:
         return "DEL"
     m = int(round(max(minor, 0.0))) if math.isfinite(minor) else None
-    if t == 2:
-        if m == 0:
+    if t == b:
+        # Copy-neutral LOH only means anything at two copies. Three copies
+        # with no minor allele is a gain carrying LOH, not copy-neutral.
+        if m == 0 and b == 2:
             return "CNLOH"
         return "balanced het"
     if m is not None and m * 2 != t:
         return "GAIN"
-    return "GAIN" if t > 2 else "imbalance"
+    return "GAIN" if t > b else "imbalance"
 
 
 # ---------------------------------------------------------------------------
@@ -191,7 +223,11 @@ def read_segments(path):
                          "start": int(fields[index["start"]]),
                          "end": int(fields[index["end"]]),
                          "log2": get("log2_ratio"),
-                         "theta": get("theta")})
+                         "theta": get("theta"),
+                         # Present in ichorCNA-derived tables. When it is, it
+                         # is preferred over converting log2 back through a
+                         # purity and ploidy the caller may not have.
+                         "copy_number": get("copy_number")})
     return segments
 
 
@@ -220,6 +256,22 @@ def read_bed(path, name_column=3):
     return by_chrom
 
 
+def centromeres_from_cytobands(cytobands):
+    """{chrom: (start, end)} from the acen bands of a cytoband file.
+
+    The hardcoded T2T table is only right for T2T. Copy number now comes from
+    ichorCNA against hg38, where those coordinates put the chr9 centromere
+    band across 40 Mb of q arm. Reading the file that was supplied for the
+    cytogram keeps the shading on whichever build the data are on.
+    """
+    out = {}
+    for chrom, bands in (cytobands or {}).items():
+        acen = [(s, e) for s, e, _name, stain in bands if stain == "acen"]
+        if acen:
+            out[chrom] = (min(s for s, _e in acen), max(e for _s, e in acen))
+    return out
+
+
 # ---------------------------------------------------------------------------
 # Drawing helpers
 # ---------------------------------------------------------------------------
@@ -245,19 +297,26 @@ def segment_lookup(positions, segments_here, key):
 
 
 def step_trace(axis, segments_here, key, colour, scale, linewidth=2.2,
-               offset=0.0):
-    """Segment values as a step trace, the way PURPLE draws copy number."""
+               offset=0.0, linestyle="-"):
+    """Segment values as a step trace, the way PURPLE draws copy number.
+
+    A colour of None takes each segment's own call colour, so the median line
+    reads as the same object as the points scattered under it rather than as
+    a separate black annotation.
+    """
     for s in sorted(segments_here, key=lambda x: x["start"]):
         value = s.get(key, float("nan"))
         if not math.isfinite(value):
             continue
+        shade = (CALL_COLOUR.get(s.get("call"), "#5A6068")
+                 if colour is None else colour)
         axis.plot([offset + s["start"] / scale, offset + s["end"] / scale],
-                  [value] * 2, color=colour, linewidth=linewidth,
-                  solid_capstyle="butt", zorder=4)
+                  [value] * 2, color=shade, linewidth=linewidth,
+                  linestyle=linestyle, solid_capstyle="butt", zorder=4)
 
 
 def draw_cytogram(axis, chrom, length, cytobands, label=False, offset=0.0,
-                  scale=1e6):
+                  scale=1e6, centromeres=None):
     from matplotlib import patches
     bottom, height = 0.25, 0.50
     bands = cytobands.get(chrom, [])
@@ -274,8 +333,9 @@ def draw_cytogram(axis, chrom, length, cytobands, label=False, offset=0.0,
                           fontsize=5.5, rotation=90,
                           color="white" if dark else "0.15", zorder=4)
     else:
-        if chrom in T2T_CENTROMERES:
-            a, b = T2T_CENTROMERES[chrom]
+        table = T2T_CENTROMERES if centromeres is None else centromeres
+        if chrom in table:
+            a, b = table[chrom]
             arms = [(0, a), (b, length)]
         else:
             arms = [(0, length)]
@@ -283,8 +343,8 @@ def draw_cytogram(axis, chrom, length, cytobands, label=False, offset=0.0,
             axis.add_patch(patches.Rectangle(
                 (offset + a / scale, bottom), (b - a) / scale, height,
                 facecolor="#E4E7EA", edgecolor="0.45", linewidth=0.6, zorder=2))
-        if chrom in T2T_CENTROMERES:
-            a, b = T2T_CENTROMERES[chrom]
+        if chrom in table:
+            a, b = table[chrom]
             axis.add_patch(patches.Rectangle(
                 (offset + a / scale, bottom + height * 0.2),
                 (b - a) / scale, height * 0.6, facecolor="#B33A3A",
@@ -303,7 +363,7 @@ def style_track(axis):
 
 def draw_panels(axes, chrom, length, bins, windows, segments, purity, ploidy,
                 max_cn, point_size, genes=None, targets=None, cytobands=None,
-                label_bands=False, compact=False):
+                label_bands=False, compact=False, centromeres=None):
     """Fill the depth, BAF, copy number, targets and cytogram axes."""
     ax_depth, ax_baf, ax_cn, ax_targets, ax_ideo = axes
     reference = 1 if chrom in ("chrX", "chrY") else 2
@@ -325,9 +385,10 @@ def draw_panels(axes, chrom, length, bins, windows, segments, purity, ploidy,
                                   ha="center", va="bottom", fontsize=8,
                                   fontweight="bold", color="0.2")
 
+    centromere_table = T2T_CENTROMERES if centromeres is None else centromeres
     for axis in [a for a in axes if a is not None]:
-        if chrom in T2T_CENTROMERES and not (genes and not compact):
-            a, b = T2T_CENTROMERES[chrom]
+        if chrom in centromere_table and not (genes and not compact):
+            a, b = centromere_table[chrom]
             axis.axvspan(a / scale, b / scale, color="0.95", zorder=0,
                          linewidth=0)
         axis.set_xlim(0, limit)
@@ -340,24 +401,26 @@ def draw_panels(axes, chrom, length, bins, windows, segments, purity, ploidy,
                    else CALL_COLOUR["balanced het"] for o in objects]
         ax_depth.scatter(positions / scale, log2, s=point_size, c=colours,
                          alpha=0.40, linewidths=0, zorder=2)
-    step_trace(ax_depth, here, "log2", "black", scale, linewidth=2.4)
+    step_trace(ax_depth, here, "log2", None, scale, linewidth=2.6,
+               linestyle=":")
     ax_depth.axhline(0.0, color="0.45", linewidth=0.8, linestyle="--", zorder=1)
     ax_depth.set_ylim(-1.5, 1.5)
     ax_depth.tick_params(labelbottom=False, labelsize=8)
 
     # --- BAF ---
-    if chrom in windows and chrom not in ("chrX", "chrY"):
-        positions, theta = windows[chrom]
-        _v, objects = segment_lookup(positions, here, "theta")
-        colours = [CALL_COLOUR[o["call"]] if o is not None
-                   else CALL_COLOUR["balanced het"] for o in objects]
-        for values in (theta, 1.0 - theta):
-            ax_baf.scatter(positions / scale, values, s=point_size * 1.5,
-                           c=colours, alpha=0.60, linewidths=0, zorder=2)
-    ax_baf.axhline(0.5, color="0.45", linewidth=0.8, zorder=1)
-    ax_baf.set_ylim(0.0, 1.0)
-    ax_baf.set_yticks([0.0, 0.5, 1.0])
-    ax_baf.tick_params(labelbottom=False, labelsize=8)
+    if ax_baf is not None:
+        if chrom in windows and chrom not in ("chrX", "chrY"):
+            positions, theta = windows[chrom]
+            _v, objects = segment_lookup(positions, here, "theta")
+            colours = [CALL_COLOUR[o["call"]] if o is not None
+                       else CALL_COLOUR["balanced het"] for o in objects]
+            for values in (theta, 1.0 - theta):
+                ax_baf.scatter(positions / scale, values, s=point_size * 1.5,
+                               c=colours, alpha=0.60, linewidths=0, zorder=2)
+        ax_baf.axhline(0.5, color="0.45", linewidth=0.8, zorder=1)
+        ax_baf.set_ylim(0.0, 1.0)
+        ax_baf.set_yticks([0.0, 0.5, 1.0])
+        ax_baf.tick_params(labelbottom=False, labelsize=8)
 
     # --- copy number: total and minor allele ---
     step_trace(ax_cn, here, "total", CN_TOTAL_COLOUR, scale, linewidth=2.6)
@@ -384,7 +447,8 @@ def draw_panels(axes, chrom, length, bins, windows, segments, purity, ploidy,
     # --- cytogram ---
     if ax_ideo is not None:
         style_track(ax_ideo)
-        draw_cytogram(ax_ideo, chrom, length, cytobands or {}, label_bands)
+        draw_cytogram(ax_ideo, chrom, length, cytobands or {}, label_bands,
+                      centromeres=centromeres)
         ax_ideo.tick_params(labelbottom=True, labelsize=8)
 
 
@@ -395,9 +459,14 @@ def main():
     parser.add_argument("bins")
     parser.add_argument("segments")
     parser.add_argument("output")
-    parser.add_argument("--purity", type=float, required=True,
-                        help="Tumour purity, 0-1. Required: copy number cannot "
-                             "be computed without it.")
+    parser.add_argument("--purity", type=float, default=None,
+                        help="Tumour purity, 0-1. Needed only when the segments "
+                             "table has no copy_number column, since copy "
+                             "number is then converted from log2.")
+    parser.add_argument("--no-baf", action="store_true",
+                        help="Omit the allele fraction panel. Set automatically "
+                             "when the inputs carry no allele data, so an empty "
+                             "panel is never drawn.")
     parser.add_argument("--ploidy", type=float, default=2.0)
     parser.add_argument("--chr", dest="chrom", default=None)
     parser.add_argument("--genome", action="store_true")
@@ -412,6 +481,18 @@ def main():
                              "showing even though these windows are masked "
                              "from the analysis, because the track marks where "
                              "the copy number calls are blind.")
+    parser.add_argument("--sex", choices=["XX", "XY"], default="XX",
+                        help="Sex chromosomes are judged against their "
+                             "constitutional copy number rather than the "
+                             "tumour baseline, matching ichorkaryo [XX]")
+    parser.add_argument("--point-scale", type=float, default=1.0,
+                        help="Multiplier on the scatter point size in every "
+                             "layout [1.0]")
+    parser.add_argument("--baseline", type=float, default=None,
+                        help="Copy number to treat as neutral. Defaults to the "
+                             "length-weighted modal autosomal copy number, "
+                             "which is 3 on a near-triploid genome and is what "
+                             "gains and losses are measured against.")
     parser.add_argument("--max-cn", type=float, default=6.0)
     parser.add_argument("--columns", type=int, default=4)
     parser.add_argument("--title", default=None)
@@ -427,7 +508,7 @@ def main():
     except ImportError:
         raise SystemExit("ERROR: matplotlib is required.")
 
-    rho, psi = args.purity, args.ploidy
+    psi = args.ploidy
     windows_path = args.windows or args.segments.replace(
         ".segments.baf.tsv", ".baf_windows.tsv")
 
@@ -438,11 +519,52 @@ def main():
     genes = read_bed(args.genes)
     targets = read_bed(args.targets)
 
+    # Copy number from the column where the caller supplied one. Converting
+    # log2 back through purity and ploidy only reproduces the caller's own
+    # numbers when it is handed the caller's own fitted parameters, and for
+    # ichorCNA that parameter is the copy-number deviation this project
+    # deliberately does not treat as purity.
+    have_copy_number = any(math.isfinite(s.get("copy_number", float("nan")))
+                           for s in segments)
+    if not have_copy_number and args.purity is None:
+        raise SystemExit("ERROR: --purity is required when the segments table "
+                         "has no copy_number column.")
+    rho = args.purity if args.purity is not None else 1.0
+
     for s in segments:
         reference = 1 if s["chrom"] in ("chrX", "chrY") else 2
-        s["total"] = total_copy_number(s["log2"], rho, psi, reference)
+        if have_copy_number and math.isfinite(s.get("copy_number", float("nan"))):
+            s["total"] = s["copy_number"]
+        else:
+            s["total"] = total_copy_number(s["log2"], rho, psi, reference)
         s["minor"] = minor_copy_number(s["theta"], s["total"], rho)
-        s["call"] = call_class(s["total"], s["minor"], s["theta"])
+
+    # Two passes: the baseline is the modal total, so every total has to exist
+    # before any segment can be called against it.
+    baseline = (args.baseline if args.baseline is not None
+                else modal_copy_number(segments))
+    for s in segments:
+        # Sex chromosomes keep a constitutional expectation rather than the
+        # tumour baseline, matching ichorkaryo: their normal copy number is
+        # set by sex, not by how far the rest of the genome has drifted. Two
+        # copies of X in a female is not a loss because the autosomes went
+        # to three.
+        if s["chrom"] == "chrY" and args.sex == "XX":
+            s["call"] = "balanced het"
+            continue
+        if s["chrom"] in ("chrX", "chrY"):
+            expected = 1 if args.sex == "XY" else 2
+        else:
+            expected = baseline
+        s["call"] = call_class(s["total"], s["minor"], s["theta"], expected)
+
+    centromeres = centromeres_from_cytobands(cytobands) or None
+
+    # An empty panel reads as measured and found nothing. Drop it whenever
+    # there is nothing to put in it.
+    has_allele_data = bool(windows) or any(
+        math.isfinite(s.get("theta", float("nan"))) for s in segments)
+    show_baf = not args.no_baf and has_allele_data
 
     lengths = {}
     for s in segments:
@@ -451,45 +573,71 @@ def main():
         lengths[chrom] = max(lengths.get(chrom, 0), int(positions.max()))
 
     title = args.title or os.path.basename(args.segments).split(".")[0]
-    header = "%s    purity %.2f, ploidy %.2f" % (title, rho, psi)
+    if int(round(baseline)) != 2:
+        title = "%s    baseline CN %d" % (title, int(round(baseline)))
+    if args.purity is not None:
+        header = "%s    purity %.2f, ploidy %.2f" % (title, args.purity, psi)
+    elif have_copy_number:
+        header = "%s    copy number as called" % title
+    else:
+        header = "%s    ploidy %.2f" % (title, psi)
     if args.subtitle:
         header += "   |   " + args.subtitle
 
+    # Only the classes that actually occur. Depth-only input produces DEL,
+    # GAIN and balanced het; listing CNLOH and imbalance beside them implies
+    # they were looked for and not found.
+    present = {s["call"] for s in segments}
     baf_handles = [lines.Line2D([], [], marker="o", linestyle="none",
-                                markersize=5, color=c, label=k)
-                   for k, c in CALL_COLOUR.items()]
+                                markersize=7, color=c, label=k)
+                   for k, c in CALL_COLOUR.items() if k in present]
     cn_handles = [
         lines.Line2D([], [], color=CN_TOTAL_COLOUR, lw=3, label="total CN"),
-        lines.Line2D([], [], color=CN_MINOR_COLOUR, lw=3, label="minor allele CN"),
     ]
+    if show_baf:
+        cn_handles.append(
+            lines.Line2D([], [], color=CN_MINOR_COLOUR, lw=3,
+                         label="minor allele CN"))
 
     # ---- single chromosome ------------------------------------------------
     if args.chrom:
         chrom = args.chrom
         if chrom not in lengths:
             raise SystemExit("ERROR: no data for %s" % chrom)
-        figure = pyplot.figure(figsize=(17, 10))
-        grid = gridspec.GridSpec(5, 1, height_ratios=[3, 2.2, 2.4, 0.45, 0.85],
+        figure = pyplot.figure(figsize=(17, 10 if show_baf else 8.2))
+        ratios = ([3, 2.2, 2.4, 0.45, 0.85] if show_baf
+                  else [3, 2.4, 0.45, 0.85])
+        grid = gridspec.GridSpec(len(ratios), 1, height_ratios=ratios,
                                  hspace=0.10)
-        axes = [figure.add_subplot(grid[0])]
-        for i in range(1, 5):
-            axes.append(figure.add_subplot(grid[i], sharex=axes[0]))
+        built = [figure.add_subplot(grid[0])]
+        for i in range(1, len(ratios)):
+            built.append(figure.add_subplot(grid[i], sharex=built[0]))
+        if show_baf:
+            axes = built
+        else:
+            axes = [built[0], None] + built[1:]
         draw_panels(axes, chrom, lengths[chrom], bins, windows, segments,
-                    rho, psi, args.max_cn, point_size=13.0, genes=genes,
-                    targets=targets, cytobands=cytobands, label_bands=True)
-        axes[0].set_ylabel("log2 depth ratio")
-        axes[1].set_ylabel("BAF\nallele fraction")
-        axes[2].set_ylabel("copy number")
-        axes[3].set_ylabel("targets", fontsize=8, rotation=0, ha="right",
-                           va="center")
-        axes[4].set_ylabel("cytoband", fontsize=8, rotation=0, ha="right",
-                           va="center")
-        axes[4].set_xlabel("%s position (Mb)" % chrom)
-        axes[0].set_title("%s  --  %s" % (chrom, header), fontsize=13, pad=22)
-        axes[1].legend(handles=baf_handles, fontsize=7, ncol=6,
-                       loc="upper right", framealpha=0.92)
-        axes[2].legend(handles=cn_handles, fontsize=8, ncol=2,
-                       loc="upper right", framealpha=0.92)
+                    rho, psi, args.max_cn,
+                    point_size=13.0 * args.point_scale, genes=genes,
+                    targets=targets, cytobands=cytobands, label_bands=True,
+                    centromeres=centromeres)
+        built[0].set_ylabel("log2 depth ratio")
+        if show_baf:
+            built[1].set_ylabel("BAF\nallele fraction")
+        built[-3].set_ylabel("copy number")
+        built[-2].set_ylabel("targets", fontsize=8, rotation=0, ha="right",
+                             va="center")
+        built[-1].set_ylabel("cytoband", fontsize=8, rotation=0, ha="right",
+                             va="center")
+        built[-1].set_xlabel("%s position (Mb)" % chrom)
+        built[0].set_title("%s  --  %s" % (chrom, header), fontsize=13, pad=22)
+        # The call-class colours still apply to the depth scatter, so the
+        # legend moves there rather than going with the panel.
+        (built[1] if show_baf else built[0]).legend(
+            handles=baf_handles, fontsize=7, ncol=6, loc="upper right",
+            framealpha=0.92)
+        built[-3].legend(handles=cn_handles, fontsize=8, ncol=2,
+                         loc="upper right", framealpha=0.92)
         figure.savefig(args.output, bbox_inches="tight", dpi=130)
         sys.stderr.write("wrote %s\n" % args.output)
         return
@@ -503,13 +651,15 @@ def main():
             offsets[name] = running
             running += lengths[name]
         scale = 1e6
-        figure = pyplot.figure(figsize=(21, 10))
-        grid = gridspec.GridSpec(4, 1, height_ratios=[3, 2.2, 2.4, 0.7],
+        figure = pyplot.figure(figsize=(21, 10 if show_baf else 8.2))
+        ratios = [3, 2.2, 2.4, 0.7] if show_baf else [3, 2.4, 0.7]
+        grid = gridspec.GridSpec(len(ratios), 1, height_ratios=ratios,
                                  hspace=0.10)
         ax_depth = figure.add_subplot(grid[0])
-        ax_baf = figure.add_subplot(grid[1], sharex=ax_depth)
-        ax_cn = figure.add_subplot(grid[2], sharex=ax_depth)
-        ax_ideo = figure.add_subplot(grid[3], sharex=ax_depth)
+        ax_baf = (figure.add_subplot(grid[1], sharex=ax_depth)
+                  if show_baf else None)
+        ax_cn = figure.add_subplot(grid[2 if show_baf else 1], sharex=ax_depth)
+        ax_ideo = figure.add_subplot(grid[3 if show_baf else 2], sharex=ax_depth)
 
         for name in order:
             shift = offsets[name] / scale
@@ -519,9 +669,11 @@ def main():
                 _v, objects = segment_lookup(positions, here, "log2")
                 colours = [CALL_COLOUR[o["call"]] if o is not None
                            else CALL_COLOUR["balanced het"] for o in objects]
-                ax_depth.scatter(shift + positions / scale, log2, s=1.5,
-                                 c=colours, alpha=0.35, linewidths=0, zorder=2)
-            if name in windows and name not in ("chrX", "chrY"):
+                ax_depth.scatter(shift + positions / scale, log2,
+                                 s=5.0 * args.point_scale, c=colours,
+                                 alpha=0.55, linewidths=0, zorder=2)
+            if ax_baf is not None and name in windows \
+                    and name not in ("chrX", "chrY"):
                 positions, theta = windows[name]
                 _v, objects = segment_lookup(positions, here, "theta")
                 colours = [CALL_COLOUR[o["call"]] if o is not None
@@ -529,28 +681,36 @@ def main():
                 for values in (theta, 1.0 - theta):
                     ax_baf.scatter(shift + positions / scale, values, s=3.0,
                                    c=colours, alpha=0.5, linewidths=0, zorder=2)
-            step_trace(ax_depth, here, "log2", "black", scale, 2.2, shift)
+            step_trace(ax_depth, here, "log2", None, scale, 2.6, shift,
+                       linestyle=":")
             step_trace(ax_cn, here, "total", CN_TOTAL_COLOUR, scale, 2.4, shift)
             step_trace(ax_cn, here, "minor", CN_MINOR_COLOUR, scale, 2.0, shift)
             draw_cytogram(ax_ideo, name, lengths[name], cytobands,
-                          label=False, offset=shift)
+                          label=False, offset=shift, centromeres=centromeres)
 
         ax_depth.axhline(0.0, color="0.45", linewidth=0.8, linestyle="--")
         ax_depth.set_ylim(-1.5, 1.5)
         ax_depth.set_ylabel("depth\nlog2 copy ratio")
-        ax_baf.axhline(0.5, color="0.45", linewidth=0.8)
-        ax_baf.set_ylim(0, 1)
-        ax_baf.set_yticks([0.0, 0.5, 1.0])
-        ax_baf.set_ylabel("BAF\nallele fraction")
+        if ax_baf is not None:
+            ax_baf.axhline(0.5, color="0.45", linewidth=0.8)
+            ax_baf.set_ylim(0, 1)
+            ax_baf.set_yticks([0.0, 0.5, 1.0])
+            ax_baf.set_ylabel("BAF\nallele fraction")
         for level in range(0, int(args.max_cn) + 1):
             ax_cn.axhline(level, color="0.93", linewidth=0.6, zorder=1)
         ax_cn.axhline(2, color="0.55", linewidth=0.8, linestyle="--", zorder=1)
+        if int(round(baseline)) != 2:
+            # Without this nothing in the figure says where neutral is, and
+            # the grey points would look unexplained.
+            ax_cn.axhline(baseline, color=CALL_COLOUR["balanced het"],
+                          linewidth=1.0, linestyle=":", zorder=1)
         ax_cn.set_ylim(-0.4, args.max_cn)
         ax_cn.set_yticks(range(0, int(args.max_cn) + 1))
         ax_cn.set_ylabel("copy number")
         style_track(ax_ideo)
 
-        for axis in (ax_depth, ax_baf, ax_cn, ax_ideo):
+        for axis in [a for a in (ax_depth, ax_baf, ax_cn, ax_ideo)
+                     if a is not None]:
             for name in order[:-1]:
                 axis.axvline((offsets[name] + lengths[name]) / scale,
                              color="0.88", linewidth=0.6, zorder=1)
@@ -562,8 +722,8 @@ def main():
         ax_ideo.set_xticklabels([n[3:] for n in order], fontsize=9)
         ax_ideo.set_xlabel("chromosome")
         ax_depth.set_title(header, fontsize=13)
-        ax_baf.legend(handles=baf_handles, fontsize=7, ncol=6,
-                      loc="upper right", framealpha=0.92)
+        (ax_baf or ax_depth).legend(handles=baf_handles, fontsize=7, ncol=6,
+                                    loc="upper right", framealpha=0.92)
         ax_cn.legend(handles=cn_handles, fontsize=8, ncol=2,
                      loc="upper right", framealpha=0.92)
         figure.savefig(args.output, bbox_inches="tight", dpi=120)
@@ -577,21 +737,25 @@ def main():
     outer = gridspec.GridSpec(rows, columns, hspace=0.48, wspace=0.22)
 
     for position, chrom in enumerate(order):
+        ratios = [2.4, 1.8, 2.0, 0.5] if show_baf else [2.4, 2.0, 0.5]
         cell = gridspec.GridSpecFromSubplotSpec(
-            4, 1, subplot_spec=outer[position],
-            height_ratios=[2.4, 1.8, 2.0, 0.5], hspace=0.10)
+            len(ratios), 1, subplot_spec=outer[position],
+            height_ratios=ratios, hspace=0.10)
         ax_depth = figure.add_subplot(cell[0])
-        ax_baf = figure.add_subplot(cell[1], sharex=ax_depth)
-        ax_cn = figure.add_subplot(cell[2], sharex=ax_depth)
-        ax_ideo = figure.add_subplot(cell[3], sharex=ax_depth)
+        ax_baf = (figure.add_subplot(cell[1], sharex=ax_depth)
+                  if show_baf else None)
+        ax_cn = figure.add_subplot(cell[2 if show_baf else 1], sharex=ax_depth)
+        ax_ideo = figure.add_subplot(cell[3 if show_baf else 2], sharex=ax_depth)
         draw_panels([ax_depth, ax_baf, ax_cn, None, ax_ideo], chrom,
                     lengths[chrom], bins, windows, segments, rho, psi,
-                    args.max_cn, point_size=2.4, cytobands=cytobands,
-                    compact=True)
+                    args.max_cn, point_size=5.0 * args.point_scale,
+                    cytobands=cytobands,
+                    compact=True, centromeres=centromeres)
         ax_depth.set_title(chrom, fontsize=11, pad=4)
         if position % columns == 0:
             ax_depth.set_ylabel("log2", fontsize=9)
-            ax_baf.set_ylabel("BAF", fontsize=9)
+            if ax_baf is not None:
+                ax_baf.set_ylabel("BAF", fontsize=9)
             ax_cn.set_ylabel("CN", fontsize=9)
 
     figure.suptitle(header, fontsize=15, y=0.998)
