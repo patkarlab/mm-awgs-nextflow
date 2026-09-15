@@ -10,6 +10,7 @@ process ICHORCNA {
     tuple val(meta), path("ichorcna_out/${meta.id}.params.txt"), optional: true, emit: params_file
     tuple val(meta), path("ichorcna_out/${meta.id}.seg.txt"),    optional: true, emit: seg
     tuple val(meta), path("ichorcna_out/${meta.id}.cna.seg"),    optional: true, emit: cna_seg
+    tuple val(meta), path("ichorcna_out/${meta.id}.wig"),        optional: true, emit: wig
     path "versions.yml",                                                              emit: versions
 
     script:
@@ -86,6 +87,14 @@ process ICHORCNA {
         --txnStrength 10000000 \\
         --outDir ichorcna_out/
 
+    # Keep the readCounter bin counts alongside ichorCNA's own outputs. Those
+    # carry corrected log ratios and no read counts, so median reads per bin
+    # and the raw count overdispersion cannot be recovered from them. Without
+    # this copy the WIG stays in the work directory and goes on the next clean.
+    if [ -f ${meta.id}.wig ]; then
+        cp ${meta.id}.wig ichorcna_out/${meta.id}.wig
+    fi
+
     # Move expected outputs into the publish dir at predictable paths
     if [ -f ichorcna_out/${meta.id}.params.txt ]; then
         tf=\$(awk -F'\\t' '/Tumor Fraction:/ {print \$2}' ichorcna_out/${meta.id}.params.txt | head -1)
@@ -103,6 +112,7 @@ process ICHORCNA {
     """
     mkdir -p ichorcna_out
     touch ichorcna_out/${meta.id}.params.txt ichorcna_out/${meta.id}.seg.txt ichorcna_out/${meta.id}.cna.seg
+    printf 'fixedStep chrom=chr1 start=1 step=1000000 span=1000000\\n0\\n' > ichorcna_out/${meta.id}.wig
     echo '"${task.process}": stub' > versions.yml
     """
 }
