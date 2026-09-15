@@ -170,15 +170,46 @@ def tally_window(bam, chrom, start, end, site_list, min_mapq, min_baseq):
     return counts
 
 
-def window_depth(bam, chrom, start, end):
-    """Mean depth across a window from samtools-style coverage."""
+def window_depth(bam, chrom, start, end, bin_size=0):
+    """Mean depth across a window, and optionally that depth in fixed bins.
+
+    count_coverage already builds a per-base count across the whole window;
+    the original version summed it and threw the profile away. Binning the
+    same arrays costs no extra read of the BAM and gives a per-gene depth
+    track at a resolution the chromosome-level segment table cannot reach:
+    CDKN2A is 128 kb, a fraction of one ichorCNA bin, and sits at log2 -0.90
+    inside a 9p the segment caller reports as neutral.
+
+    Returns (mean_depth, bins), where bins is a list of
+    (bin_start, bin_end, mean_depth) in reference coordinates and is empty
+    when bin_size is 0. The last bin of a window is short whenever the window
+    length is not a multiple of bin_size; its real span is given by its own
+    coordinates, so no caller needs to assume a uniform width.
+
+    No mapping-quality filter is applied here. That matches count_coverage's
+    default read_callback, which drops unmapped, secondary, QC-fail and
+    duplicate reads but does not consult MAPQ, and it is the behaviour the
+    reported mean has always had -- so the bins average back to exactly the
+    mean this function returned before.
+    """
+    length = end - start
     try:
         cov = bam.count_coverage(chrom, start, end, quality_threshold=0)
     except ValueError:
-        return float("nan")
-    total = sum(sum(c) for c in cov)
-    length = end - start
-    return total / length if length else float("nan")
+        return float("nan"), []
+    if not length:
+        return float("nan"), []
+    if not bin_size:
+        return sum(sum(c) for c in cov) / length, []
+
+    bins = []
+    total = 0
+    for offset in range(0, length, bin_size):
+        stop = min(offset + bin_size, length)
+        counts = sum(sum(c[offset:stop]) for c in cov)
+        total += counts
+        bins.append((start + offset, start + stop, counts / (stop - offset)))
+    return total / length, bins
 
 
 def classify(n_het, n_hom_usable, expected_het_fraction, devs, in_band,
@@ -328,6 +359,9 @@ def main():
                         help="reads on the minor allele required to call a site het [3]")
     parser.add_argument("--min-mapq", type=int, default=10)
     parser.add_argument("--min-baseq", type=int, default=10)
+    parser.add_argument("--bin-size", type=int, default=1000,
+                        help="width in bases of the per-gene depth bins. 0 "
+                             "skips the bins file entirely [1000]")
     parser.add_argument("--min-hets", type=int, default=8,
                         help="hets required for a balanced/imbalanced call [8]")
     parser.add_argument("--cytobands",
@@ -363,10 +397,13 @@ def main():
     bam = pysam.AlignmentFile(args.bam, "rb")
     rows = []
     per_site_rows = []
+    bin_rows = []
 
     for window in windows:
         chrom, start, end, name = window
-        depth = window_depth(bam, chrom, start, end)
+        depth, depth_bins = window_depth(bam, chrom, start, end, args.bin_size)
+        for bin_start, bin_end, bin_depth in depth_bins:
+            bin_rows.append((name, chrom, bin_start, bin_end, bin_depth))
         devs, afs = [], []
         n_het = n_hom = n_lowdepth = n_other = 0
         expected_het = []
@@ -447,6 +484,23 @@ def main():
         for r in per_site_rows:
             handle.write("\t".join(str(x) for x in r) + "\n")
 
+    # Depth per bin, with a log2 ratio against the median bin across the whole
+    # panel for this sample. The median is over bins and not over windows, so
+    # that one 5 Mb window cannot set the baseline by itself; it is recorded in
+    # the JSON so a reader can renormalise without rerunning. A bin at zero
+    # depth gets an empty log2 rather than negative infinity.
+    normaliser = statistics.median(b[4] for b in bin_rows) if bin_rows else 0.0
+    if bin_rows:
+        with open(args.out_prefix + ".genebaf.bins.tsv", "w", encoding="utf-8") as handle:
+            handle.write("gene\tchrom\tstart\tend\tmean_depth\tlog2_ratio\n")
+            for name, chrom, bin_start, bin_end, bin_depth in bin_rows:
+                if normaliser > 0 and bin_depth > 0:
+                    log2 = format(math.log2(bin_depth / normaliser), ".3f")
+                else:
+                    log2 = ""
+                handle.write(f"{name}\t{chrom}\t{bin_start}\t{bin_end}\t"
+                             f"{bin_depth:.2f}\t{log2}\n")
+
     summary = {
         "sample": args.sample,
         "n_windows": len(windows),
@@ -458,6 +512,9 @@ def main():
         "imbalanced_genes": [r["gene"] for r in rows if r["allelic_state"] == "imbalanced"],
         "arms": arms,
         "loh_arms": [a for a, v in arms.items() if v["verdict"] == "loh"],
+        "bin_size": args.bin_size,
+        "n_bins": len(bin_rows),
+        "depth_normaliser": round(normaliser, 2) if bin_rows else None,
     }
     with open(args.out_prefix + ".genebaf.json", "w", encoding="utf-8") as handle:
         json.dump(summary, handle, indent=2)
@@ -472,7 +529,13 @@ def main():
     else:
         print("LOH arms    : not assessed (no --cytobands)")
     print(f"imbalanced  : {', '.join(summary['imbalanced_genes']) or 'none'}")
-    print(f"written     : {args.out_prefix}.genebaf.tsv / .sites.tsv / .json")
+    if bin_rows:
+        print(f"depth bins  : {len(bin_rows)} of {args.bin_size} bp, "
+              f"normalised to {normaliser:.2f}x")
+        print(f"written     : {args.out_prefix}.genebaf.tsv / .sites.tsv / "
+              f".bins.tsv / .json")
+    else:
+        print(f"written     : {args.out_prefix}.genebaf.tsv / .sites.tsv / .json")
     return 0
 
 
