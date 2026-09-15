@@ -884,6 +884,20 @@ def main():
             "against %d, while trisomies and the hyperdiploid call are "
             "referenced to a constitutional 2 -- the two are not on the same "
             "scale and should not be read together." % (baseline, baseline))
+    # Purity and ploidy are degenerate against read depth, so a fitted
+    # cellularity far from the measured one means the copy-number levels were
+    # placed against a cellularity the sample does not have. That shifts every
+    # integer call, usually by a whole copy, and it is the signature of
+    # ichorCNA being allowed to estimate the normal fraction on sorted cells.
+    if (args.purity is not None and params["cna_burden"] is not None
+            and abs(params["cna_burden"] - args.purity) > 0.15):
+        warnings.append(
+            "ichorCNA fitted a cellularity of %.2f against a flow purity of "
+            "%.2f. A gap this wide means the copy-number levels were fitted "
+            "to a cellularity the sample does not have, and the integer calls "
+            "may be shifted by a whole copy. Check that ICHORCNA is being "
+            "given a fixed normal fraction."
+            % (params["cna_burden"], args.purity))
     if ploidy_calls["ploidy_class"] == "near_triploid":
         warnings.append(
             "The genome is near-triploid: %d autosomes sit at three copies "

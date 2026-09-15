@@ -24,6 +24,29 @@ process ICHORCNA {
     // adaptive-sampling on-target regions out of ichorCNA's bin analysis,
     // since those regions are heavily over-enriched relative to the rest of
     // the genome and would otherwise distort the HMM segmentation.
+    //
+    // The normal fraction is fixed from the flow purity rather than
+    // estimated. Purity and ploidy are degenerate against read depth alone,
+    // and ichorCNA's default grid starts at a normal fraction of 0.5 because
+    // it was built for cfDNA. On sorted plasma cells the true value is near
+    // zero and is never explored, so the optimiser settles in the wrong
+    // basin: on one case it returned normal 0.33 with ploidy 3.02, making
+    // fourteen autosomes trisomic where five FISH centromere probes read two
+    // copies across 200 nuclei and 1q21 read 3-4 signals against its 7.
+    //
+    // Ploidy stays free across the configured grid. Fixing cellularity is
+    // enough to separate the two solutions, and a genuinely triploid sample
+    // must still be able to come out triploid.
+    //
+    // Floored at 0.01: the optimiser is unstable at exactly zero, and at 99.7
+    // percent purity the floor shifts the copy numbers by under one percent.
+    // Samples with no purity in the sample sheet keep the estimated grid,
+    // which is the only option available for them.
+    def ploidy_arg = params.ichorcna_estimate_ploidy ? 'TRUE' : 'FALSE'
+    def normal_fixed = meta.purity ? Math.max(0.01d, 1.0d - (meta.purity as double)) : null
+    def normal_arg   = normal_fixed != null ? String.format('c(%.4f)', normal_fixed)
+                                            : "${params.ichorcna_normal}"
+    def estimate_arg = normal_fixed != null ? 'FALSE' : 'TRUE'
     """
     set -euo pipefail
     mkdir -p ichorcna_out
@@ -58,6 +81,8 @@ process ICHORCNA {
 
     n_bins=\$(grep -vc "^[fv]" ${meta.id}.wig || echo 0)
     echo "WIG bins: \$n_bins"
+    echo "normal fraction: ${normal_arg}  (estimateNormal ${estimate_arg})"
+    echo "ploidy: ${params.ichorcna_ploidy}  (estimatePloidy ${ploidy_arg})"
     if [ "\$n_bins" -lt 100 ]; then
         echo "ERROR: too few WIG bins (\$n_bins)" >&2
         exit 1
@@ -70,7 +95,7 @@ process ICHORCNA {
         --genomeStyle UCSC \\
         --WIG ${meta.id}.wig \\
         --ploidy "${params.ichorcna_ploidy}" \\
-        --normal "${params.ichorcna_normal}" \\
+        --normal "${normal_arg}" \\
         --maxCN ${params.ichorcna_max_cn} \\
         --gcWig ${params.ichorcna_gc_wig} \\
         --mapWig ${params.ichorcna_map_wig} \\
@@ -79,8 +104,8 @@ process ICHORCNA {
         --includeHOMD False \\
         --chrs "c(1:22)" \\
         --chrTrain "${params.ichorcna_chrtrain}" \\
-        --estimateNormal TRUE \\
-        --estimatePloidy TRUE \\
+        --estimateNormal ${estimate_arg} \\
+        --estimatePloidy ${ploidy_arg} \\
         --estimateScPrevalence FALSE \\
         --scStates 'c()' \\
         --txnE 0.9999999 \\
