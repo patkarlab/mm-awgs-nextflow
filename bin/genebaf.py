@@ -54,6 +54,7 @@ Dependencies: pysam.
 import argparse
 import gzip
 import json
+import math
 import statistics
 import sys
 from collections import defaultdict
@@ -182,17 +183,18 @@ def window_depth(bam, chrom, start, end):
 
 def classify(n_het, n_hom_usable, expected_het_fraction, devs, in_band,
              min_hets, loh_ratio):
-    """Allelic state from the het allele-fraction distribution."""
-    usable = n_het + n_hom_usable
-    if usable == 0:
-        return "insufficient", None
-    observed_het_fraction = n_het / usable
-    # A region where hets have collapsed to one allele shows far fewer hets
-    # than the population predicts. loh_ratio is how far below expectation
-    # counts as loss of heterozygosity.
-    if expected_het_fraction > 0 and \
-            observed_het_fraction < expected_het_fraction * loh_ratio and usable >= min_hets:
-        return "loh", round(observed_het_fraction / expected_het_fraction, 3)
+    """Allelic state of one window from its heterozygous allele fractions.
+
+    This does NOT call LOH. A depleted heterozygous count inside a single gene
+    body is far more often homozygosity across one common haplotype than loss
+    of heterozygosity: the sites in a 300 kb window sit in a handful of linkage
+    blocks and are not independent observations. That test is done per arm
+    instead, where the windows pooled do sit in different blocks.
+
+    What is decided here is whether the heterozygous sites that exist are
+    balanced. That reads the allele fractions directly and does not depend on
+    how many hets there are.
+    """
     if n_het < min_hets:
         return "insufficient", None
     median_dev = statistics.median(devs)
@@ -202,6 +204,111 @@ def classify(n_het, n_hom_usable, expected_het_fraction, devs, in_band,
     if median_dev >= 0.15 and in_band < 0.35:
         return "imbalanced", round(median_dev, 3)
     return "balanced", round(median_dev, 3)
+
+
+def arm_of(chrom, start, end, arm_bounds):
+    """Arm label for a window, or None when it straddles the centromere."""
+    if chrom not in arm_bounds:
+        return None
+    chrom_start, cen_start, cen_end, chrom_end = arm_bounds[chrom]
+    mid = (start + end) // 2
+    if mid < cen_start:
+        return chrom[3:] + "p"
+    if mid >= cen_end:
+        return chrom[3:] + "q"
+    return None
+
+
+def read_arm_bounds(path):
+    """{chrom: (start, cen_start, cen_end, end)} from a cytoband file."""
+    spans, acen = {}, {}
+    with open(path, encoding="utf-8") as handle:
+        for line in handle:
+            parts = line.rstrip("\n").split("\t")
+            if len(parts) < 5:
+                continue
+            chrom = canonical(parts[0])
+            if chrom is None:
+                continue
+            start, end, stain = int(parts[1]), int(parts[2]), parts[4]
+            lo, hi = spans.get(chrom, (start, end))
+            spans[chrom] = (min(lo, start), max(hi, end))
+            if stain == "acen":
+                a, b = acen.get(chrom, (start, end))
+                acen[chrom] = (min(a, start), max(b, end))
+    bounds = {}
+    for chrom, (lo, hi) in spans.items():
+        if chrom in acen:
+            bounds[chrom] = (lo, acen[chrom][0], acen[chrom][1], hi)
+    return bounds
+
+
+def binomial_tail(k, n, p):
+    """P(X <= k) for X ~ Binomial(n, p). Exact, no scipy."""
+    if n <= 0:
+        return 1.0
+    p = min(max(p, 1e-12), 1 - 1e-12)
+    log_p, log_q = math.log(p), math.log(1 - p)
+    total = 0.0
+    log_coef = 0.0  # log C(n, 0)
+    for i in range(0, min(k, n) + 1):
+        if i > 0:
+            log_coef += math.log((n - i + 1) / i)
+        total += math.exp(log_coef + i * log_p + (n - i) * log_q)
+    return min(1.0, total)
+
+
+def arm_loh(rows, arm_bounds, min_windows, min_usable, max_p):
+    """Pool windows per arm and test the heterozygous count against expectation.
+
+    Returns {arm: {...}}. An arm covered by fewer than min_windows windows gets
+    no verdict: the whole reason the per-gene test failed is that one window is
+    one or two independent observations, and repeating that at arm scale would
+    repeat the mistake.
+    """
+    pooled = {}
+    for row in rows:
+        arm = arm_of(row["chrom"], row["start"], row["end"], arm_bounds)
+        if arm is None or row["n_usable"] == 0:
+            continue
+        entry = pooled.setdefault(arm, {"chrom": row["chrom"], "n_windows": 0,
+                                        "n_het": 0, "n_usable": 0,
+                                        "expected": [], "genes": []})
+        entry["n_windows"] += 1
+        entry["n_het"] += row["n_het"]
+        entry["n_usable"] += row["n_usable"]
+        entry["expected"].append(row["expected_het_fraction"] * row["n_usable"])
+        entry["genes"].append(row["gene"])
+
+    out = {}
+    for arm, entry in sorted(pooled.items()):
+        n, k = entry["n_usable"], entry["n_het"]
+        expected_fraction = (sum(entry["expected"]) / n) if n else 0.0
+        observed_fraction = (k / n) if n else 0.0
+        ratio = (observed_fraction / expected_fraction) if expected_fraction else None
+
+        if entry["n_windows"] < min_windows:
+            verdict, pval = "not_assessed_one_window", None
+        elif n < min_usable:
+            verdict, pval = "not_assessed_too_few_sites", None
+        else:
+            pval = binomial_tail(k, n, expected_fraction)
+            verdict = "loh" if pval < max_p and (ratio is not None and ratio < 0.5) \
+                else "retained"
+
+        out[arm] = {
+            "chrom": entry["chrom"],
+            "n_windows": entry["n_windows"],
+            "genes": entry["genes"],
+            "n_usable": n,
+            "n_het": k,
+            "expected_het_fraction": round(expected_fraction, 3),
+            "observed_het_fraction": round(observed_fraction, 3),
+            "ratio": round(ratio, 3) if ratio is not None else None,
+            "p_value": (None if pval is None else float(f"{pval:.3g}")),
+            "verdict": verdict,
+        }
+    return out
 
 
 def main():
@@ -223,9 +330,21 @@ def main():
     parser.add_argument("--min-baseq", type=int, default=10)
     parser.add_argument("--min-hets", type=int, default=8,
                         help="hets required for a balanced/imbalanced call [8]")
+    parser.add_argument("--cytobands",
+                        help="cytoband file for the alignment reference. Without "
+                             "it no arm-level LOH is reported.")
+    parser.add_argument("--min-arm-windows", type=int, default=2,
+                        help="panel windows an arm needs before LOH is tested. "
+                             "One window is one or two linkage blocks, which is "
+                             "what made the per-gene test unusable [2]")
+    parser.add_argument("--min-arm-sites", type=int, default=100,
+                        help="usable sites an arm needs before LOH is tested [100]")
+    parser.add_argument("--max-arm-p", type=float, default=0.001,
+                        help="binomial tail probability below which an arm is "
+                             "called LOH [0.001]")
     parser.add_argument("--loh-ratio", type=float, default=0.25,
-                        help="observed/expected het fraction below which LOH is "
-                             "called [0.25]")
+                        help="retained for compatibility; no longer used for "
+                             "per-window calls")
     parser.add_argument("--max-other-fraction", type=float, default=0.2,
                         help="drop sites where third-allele reads exceed this "
                              "fraction of depth [0.2]")
@@ -297,6 +416,22 @@ def main():
 
     bam.close()
 
+    arms = {}
+    if args.cytobands:
+        arms = arm_loh(rows, read_arm_bounds(args.cytobands),
+                       args.min_arm_windows, args.min_arm_sites, args.max_arm_p)
+        with open(args.out_prefix + ".armloh.tsv", "w", encoding="utf-8") as handle:
+            handle.write("arm\tchrom\tn_windows\tn_usable\tn_het\t"
+                         "expected_het_fraction\tobserved_het_fraction\tratio\t"
+                         "p_value\tverdict\tgenes\n")
+            for arm, v in arms.items():
+                handle.write("\t".join(str(x) for x in (
+                    arm, v["chrom"], v["n_windows"], v["n_usable"], v["n_het"],
+                    v["expected_het_fraction"], v["observed_het_fraction"],
+                    "" if v["ratio"] is None else v["ratio"],
+                    "" if v["p_value"] is None else v["p_value"],
+                    v["verdict"], ",".join(v["genes"]))) + "\n")
+
     with open(args.out_prefix + ".genebaf.tsv", "w", encoding="utf-8") as handle:
         cols = ["gene", "chrom", "start", "end", "mean_depth", "n_sites", "n_usable",
                 "n_het", "n_hom", "n_lowdepth", "n_other_allele",
@@ -319,9 +454,10 @@ def main():
                        ("min_depth", "min_alt", "min_mapq", "min_baseq",
                         "min_hets", "loh_ratio", "min_af", "max_af", "af_field")},
         "states": {s: sum(1 for r in rows if r["allelic_state"] == s)
-                   for s in ("balanced", "imbalanced", "loh", "insufficient")},
-        "loh_genes": [r["gene"] for r in rows if r["allelic_state"] == "loh"],
+                   for s in ("balanced", "imbalanced", "insufficient")},
         "imbalanced_genes": [r["gene"] for r in rows if r["allelic_state"] == "imbalanced"],
+        "arms": arms,
+        "loh_arms": [a for a, v in arms.items() if v["verdict"] == "loh"],
     }
     with open(args.out_prefix + ".genebaf.json", "w", encoding="utf-8") as handle:
         json.dump(summary, handle, indent=2)
@@ -329,7 +465,12 @@ def main():
     print(f"sample      : {args.sample}")
     print(f"windows     : {len(windows)}")
     print(f"states      : {summary['states']}")
-    print(f"LOH         : {', '.join(summary['loh_genes']) or 'none'}")
+    if args.cytobands:
+        assessed = sum(1 for v in arms.values() if v["verdict"] in ("loh", "retained"))
+        print(f"arms tested : {assessed} of {len(arms)} covered")
+        print(f"LOH arms    : {', '.join(summary['loh_arms']) or 'none'}")
+    else:
+        print("LOH arms    : not assessed (no --cytobands)")
     print(f"imbalanced  : {', '.join(summary['imbalanced_genes']) or 'none'}")
     print(f"written     : {args.out_prefix}.genebaf.tsv / .sites.tsv / .json")
     return 0
