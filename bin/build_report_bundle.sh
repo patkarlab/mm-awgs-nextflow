@@ -218,6 +218,7 @@ for s in "${SAMPLES[@]}"; do
   # the hyperdiploidy call and the QC block the dashboard tab renders; the
   # cytoband table is the per-band view in the cytogenetic vocabulary.
   copy_all   "$d/copy_number" "$s" -path '*copy_number*' -name '*.png'
+  copy_first "$d/copy_number" "${s}.ichorkaryo.json"  "$s" -path '*copy_number*' -name '*.ichorkaryo.json'
   copy_first "$d/copy_number" "${s}.karyotype.json"   "$s" -path '*copy_number*' -name '*.karyotype.json'
   copy_first "$d/copy_number" "${s}.cytobands.tsv"    "$s" -path '*copy_number*' -name '*.cytobands.tsv'
   copy_first "$d/copy_number" "${s}.segments.baf.tsv" "$s" -path '*copy_number*' -name '*.segments.baf.tsv'

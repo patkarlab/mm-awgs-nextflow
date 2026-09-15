@@ -1,18 +1,20 @@
 {#
   copy_number_tab.html.j2
 
-  Allele-specific copy number from the T2T track (mmkaryo / mmbaf / mmplot).
+  Depth-based copy number from ichorCNA, by way of ichorkaryo.
 
-  Distinct from the ichorCNA tab. That one estimates tumour fraction from
-  off-target reads against hg38 and emits copy number as a by-product; this is
-  segmented allele-specific copy number against T2T, with a clonal cell
-  fraction per segment that is directly comparable to interphase FISH
-  percentages, and an explicit detection limit so a negative means something.
+  Distinct from the ichorCNA tab. That one reads ichorCNA's own output for the
+  tumour-fraction panel; this is the derived karyotype: arm calls against the
+  genome's modal copy number, an ISCN string, a cytoband table, and a cell
+  fraction per event that is directly comparable to interphase FISH
+  percentages, with an explicit detection limit so a negative means something.
 
-  Two things are deliberately absent, because both are documented as
-  unreliable until BAF gets its own segmentation and would read as
-  authoritative here: the baseline disomic/trisomic verdict, and any purity
-  fitted with purity left free. Where the purity came from is shown instead.
+  Allele-specific copy number is absent. ichorCNA is depth-only and cannot
+  separate 2:0 from 1:1, and allelic state is now measured at the eight wide
+  panel windows rather than genome-wide. Purity comes from flow cytometry or
+  not at all; ichorCNA's own fitted fraction is shown separately as CNA
+  burden, because on sorted plasma cells it measures copy-number deviation
+  rather than how much tumour is present.
 
   Context required:
     copy_number - output of parsers/copy_number.py (or None)
@@ -40,8 +42,8 @@
 
   {% elif not cn.found %}
     <div class="alert alert-secondary mt-3">
-      <strong>No allele-specific copy number output found.</strong>
-      Expected <code>&lt;sample&gt;.karyotype.json</code> under
+      <strong>No copy number output found.</strong>
+      Expected <code>&lt;sample&gt;.ichorkaryo.json</code> under
       <code>copy_number/</code>.
       <div class="small text-muted mt-1">Searched: <code>{{ cn.searched }}</code></div>
     </div>
@@ -50,9 +52,15 @@
 
     <div class="d-flex align-items-baseline justify-content-between mt-3 mb-2">
       <div>
-        <h5 class="mb-0">Copy number &mdash; allele-specific</h5>
+        <h5 class="mb-0">Copy number</h5>
         <small class="text-muted">
-          From off-target reads against T2T-CHM13v2.0
+          ichorCNA depth from off-target reads against GRCh38
+          {% if cn.headline.baseline_cn is not none %}
+            &middot; baseline CN <strong>{{ cn.headline.baseline_cn }}</strong>
+          {% endif %}
+          {% if cn.headline.cna_burden is not none %}
+            &middot; CNA burden {{ '%.3f'|format(cn.headline.cna_burden) }}
+          {% endif %}
           {% if cn.headline.purity is not none %}
             &middot; purity <strong>{{ '%.2f'|format(cn.headline.purity) }}</strong>
             <span class="{{ 'text-success' if cn.headline.purity_supplied else 'text-warning' }}">
@@ -89,12 +97,36 @@
             </button>
           </div>
           <code id="cn-iscn-text" style="font-size:0.95rem">{{ cn.headline.iscn }}</code>
-          {% if cn.headline.hyperdiploid %}
+          {#
+            A boolean here fired on near-triploid genomes, where every
+            chromosome at three copies is the baseline rather than a gain.
+            The class distinguishes them; the chromosome count is what the
+            48-to-75 convention actually refers to.
+          #}
+          {% if cn.headline.ploidy_class %}
+            {% set badges = {
+              'hyperdiploid':     ('bg-danger',    'Hyperdiploid'),
+              'near_triploid':    ('bg-warning text-dark', 'Near-triploid'),
+              'near_tetraploid':  ('bg-warning text-dark', 'Near-tetraploid'),
+              'hypodiploid':      ('bg-danger',    'Hypodiploid'),
+              'non_hyperdiploid': ('bg-secondary', 'Non-hyperdiploid'),
+              'indeterminate':    ('bg-secondary', 'Ploidy indeterminate'),
+            } %}
+            {% set badge = badges.get(cn.headline.ploidy_class,
+                                      ('bg-secondary', cn.headline.ploidy_class)) %}
             <div class="mt-2">
-              <span class="badge bg-danger">Hyperdiploid</span>
-              <span class="small text-muted ms-1">
-                trisomies {{ cn.headline.trisomies | join(', ') }}
-              </span>
+              <span class="badge {{ badge[0] }}">{{ badge[1] }}</span>
+              {% if cn.headline.chromosome_count %}
+                <span class="small text-muted ms-1">
+                  {{ cn.headline.chromosome_count }} chromosomes
+                </span>
+              {% endif %}
+              {% if cn.headline.trisomies %}
+                <span class="small text-muted ms-1">
+                  &middot; at three copies:
+                  {{ cn.headline.trisomies | join(', ') }}
+                </span>
+              {% endif %}
             </div>
           {% endif %}
         </div>
@@ -113,10 +145,13 @@
          'smallest single-copy change detectable, as a fraction of cells'),
         ('Reads per bin',
          cn.qc.median_reads_per_bin if cn.qc.median_reads_per_bin is not none else '&ndash;',
-         'median, off-target'),
+         ('median, off-target, ' ~ (cn.qc.bin_size // 1000) ~ ' kb bins')
+           if cn.qc.bin_size else 'median, off-target'),
         ('Overdispersion',
          (cn.qc.overdispersion ~ '&times;') if cn.qc.overdispersion is not none else '&ndash;',
-         'observed noise over the Poisson floor; near 1 is counting-limited'),
+         ('near 1 is counting-limited; raw counts ' ~ cn.qc.overdispersion_raw ~ '&times;')
+           if cn.qc.overdispersion_raw is not none
+           else 'observed noise over the Poisson floor'),
         ('Segments', cn.headline.n_segments if cn.headline.n_segments is not none else '&ndash;', ''),
       ] %}
       {% for label, value, note in cards %}
@@ -139,8 +174,10 @@
              cn.figures.genome, 'col-12') }}
       </div>
       <div class="small text-muted mb-3">
-        The targets track marks the adaptive sampling panel, which is masked
-        from the analysis &mdash; copy number calls are blind inside it.
+        ichorCNA bins the genome without masking the panel, so calls inside the
+        target regions are made on the same footing as the rest. The log2 panel
+        is referenced to this sample&rsquo;s own baseline copy number, not to a
+        diploid genome.
       </div>
     {% endif %}
 
@@ -211,14 +248,21 @@
                   {{ band.chromosome }}:{{ band.start }}-{{ band.end }}
                 </td>
                 <td>{{ band.copy_number }}</td>
-                <td>{{ band.implied_copies if band.implied_copies is defined else '' }}</td>
+                <td>{{ band.implied_copies if band.implied_copies is not none else '' }}</td>
                 <td>
                   <span class="badge bg-{{ 'danger' if band.event == 'loss' else 'success' }}">
                     {{ band.event }}
                   </span>
                 </td>
-                <td>{{ band.cell_fraction }}</td>
-                <td class="small text-muted">{{ band.detection_limit }}</td>
+                {#
+                  These arrive from JSON rather than a TSV, so a missing value
+                  is null and renders as the string None unless it is guarded.
+                  Blank is what a reader should see: not measurable here.
+                #}
+                <td>{{ '%.0f%%'|format(band.cell_fraction * 100)
+                       if band.cell_fraction is not none else '' }}</td>
+                <td class="small text-muted">{{ '%.1f%%'|format(band.detection_limit * 100)
+                       if band.detection_limit is not none else '' }}</td>
               </tr>
             {% endfor %}
           </tbody>
@@ -229,23 +273,40 @@
     {% if cn.arms %}
       <details class="mt-3">
         <summary class="small text-muted">Arm-level summary</summary>
+        <div class="small text-muted mt-2">
+          Each arm takes the length-weighted majority call of the segments
+          across it. Where <em>Arm covered</em> is well below 100% the call
+          describes part of the arm only, and the cytoband table above is the
+          finer view.
+        </div>
         <div class="table-responsive mt-2">
           <table class="table table-sm table-striped">
             <thead>
               <tr>
                 <th>Arm</th><th>log2</th><th>Copy number</th>
-                <th>Event</th><th>Cell fraction</th><th>Detection limit</th>
+                <th>Event</th><th>Cell fraction</th><th>Arm covered</th>
               </tr>
             </thead>
             <tbody>
               {% for arm in cn.arms %}
                 <tr>
                   <td>{{ arm.arm }}</td>
-                  <td>{{ arm.log2_ratio }}</td>
-                  <td>{{ arm.copy_number }}</td>
+                  <td>{{ arm.log2_ratio if arm.log2_ratio is not none else '' }}</td>
+                  <td>{{ arm.copy_number if arm.copy_number is not none else '' }}</td>
                   <td>{{ arm.event }}</td>
-                  <td>{{ arm.cell_fraction }}</td>
-                  <td class="small text-muted">{{ arm.detection_limit }}</td>
+                  <td>{{ '%.0f%%'|format(arm.cell_fraction * 100)
+                         if arm.cell_fraction is not none else '' }}</td>
+                  {#
+                    Arms are called by length-weighted majority, so a call can
+                    cover only part of the arm. On 11F20265231 1p reads as copy
+                    number 3 while a 35 Mb deletion inside it is at 1. This is
+                    the column that makes that visible.
+                  #}
+                  <td class="small {{ 'text-warning' if arm.arm_fraction is not none
+                                      and arm.arm_fraction < 0.8 else 'text-muted' }}">
+                    {{ '%.0f%%'|format(arm.arm_fraction * 100)
+                       if arm.arm_fraction is not none else '' }}
+                  </td>
                 </tr>
               {% endfor %}
             </tbody>
