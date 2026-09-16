@@ -217,12 +217,13 @@ for s in "${SAMPLES[@]}"; do
   # Allele-specific copy number. The karyotype JSON carries the ISCN string,
   # the hyperdiploidy call and the QC block the dashboard tab renders; the
   # cytoband table is the per-band view in the cytogenetic vocabulary.
-  copy_all   "$d/copy_number" "$s" -path '*copy_number*' -name '*.png'
-  copy_first "$d/copy_number" "${s}.ichorkaryo.json"  "$s" -path '*copy_number*' -name '*.ichorkaryo.json'
-  copy_first "$d/copy_number" "${s}.karyotype.json"   "$s" -path '*copy_number*' -name '*.karyotype.json'
-  copy_first "$d/copy_number" "${s}.cytobands.tsv"    "$s" -path '*copy_number*' -name '*.cytobands.tsv'
-  copy_first "$d/copy_number" "${s}.segments.baf.tsv" "$s" -path '*copy_number*' -name '*.segments.baf.tsv'
-  copy_first "$d/copy_number" "${s}.arms.tsv"         "$s" -path '*copy_number*' -name '*.arms.tsv'
+  # retire_mmkaryo_v1: figures and JSON both come from hg38/copy_number now.
+  # The path is scoped so a stale t2t/copy_number directory from a run that
+  # predates the change cannot leak mmkaryo figures into this tab, and the
+  # four mmkaryo tables (karyotype.json, cytobands.tsv, segments.baf.tsv,
+  # arms.tsv) are no longer collected.
+  copy_all   "$d/copy_number" "$s" -path '*hg38/copy_number*' -name '*.png'
+  copy_first "$d/copy_number" "${s}.ichorkaryo.json"  "$s" -path '*hg38/copy_number*' -name '*.ichorkaryo.json'
 
   # IGV: breakpoint pages, the somatic page, and the manifest that maps
   # events to pages. Directory structure is flattened per evidence class so

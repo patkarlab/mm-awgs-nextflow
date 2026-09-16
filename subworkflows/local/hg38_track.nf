@@ -22,6 +22,7 @@ include { CLAIRS_TO            } from '../../modules/local/clairs_to.nf'
 include { ICHORCNA             } from '../../modules/local/ichorcna.nf'
 include { CLAIR3_PHASED        } from '../../modules/local/clair3_phased.nf'
 include { ICHORKARYO           } from '../../modules/local/ichorkaryo.nf'
+include { ICHORCNA_PLOT        } from '../../modules/local/ichorcna_plot.nf'   // retire_mmkaryo_v1
 include { GENEBAF              } from '../../modules/local/genebaf.nf'
 include { VEP_ANNOTATE_CLAIR3  } from '../../modules/local/vep_annotate_clair3.nf'
 include { FILTER_V6_REPORT    } from '../../modules/local/filter_v6_report.nf'
@@ -82,6 +83,25 @@ workflow HG38_TRACK {
                     .map { _id, meta, seg, p, c, w, bed ->
                            tuple(meta, seg, p, c, w, bed) }
             )
+
+            // Copy-number figures from the same ichorCNA output the
+            // karyotype JSON was derived from, so the figure and the
+            // tables on the copy-number tab can never disagree. Replaces
+            // MMPLOT on mmkaryo (T2T). Joined on meta.id; a sample that
+            // lacks either ichorCNA file is dropped here, which is the
+            // right outcome for a figure.
+            if (!params.skip_cn_plot) {
+                ICHORCNA_PLOT(
+                    ICHORCNA.out.cna_seg.map { meta, c -> tuple(meta.id, meta, c) }
+                        .join(ICHORCNA.out.seg.map { meta, s -> tuple(meta.id, s) })
+                        .join(ICHORKARYO.out.karyotype.map { meta, k -> tuple(meta.id, k) })
+                        .join(ch_panel_bed.map { meta, bed -> tuple(meta.id, bed) })
+                        .map { _id, meta, c, s, k, bed -> tuple(meta, c, s, k, bed) },
+                    file(params.cytoband_txt_hg38, checkIfExists: true),
+                    params.gene_model_hg38 ? file(params.gene_model_hg38, checkIfExists: true)
+                                           : file('NO_FILE')
+                )
+            }
         }
     }
 
@@ -150,6 +170,8 @@ workflow HG38_TRACK {
     ichorcna_outdir          = params.skip_ichorcna     ? Channel.empty() : ICHORCNA.out.outdir
     ichorkaryo_json          = (params.skip_ichorcna || params.skip_ichorkaryo)
                                ? Channel.empty() : ICHORKARYO.out.karyotype
+    cn_figures               = (params.skip_ichorcna || params.skip_ichorkaryo || params.skip_cn_plot)
+                               ? Channel.empty() : ICHORCNA_PLOT.out.genome
     genebaf_genes            = params.skip_genebaf      ? Channel.empty() : GENEBAF.out.genes
     genebaf_summary          = params.skip_genebaf      ? Channel.empty() : GENEBAF.out.summary
     genebaf_armloh           = params.skip_genebaf      ? Channel.empty() : GENEBAF.out.armloh

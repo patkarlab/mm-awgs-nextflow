@@ -37,6 +37,7 @@ import argparse
 import math
 import os
 import sys
+import textwrap  # cn_figure_legibility_v1
 from collections import OrderedDict
 
 import numpy
@@ -584,6 +585,13 @@ def main():
     if args.subtitle:
         header += "   |   " + args.subtitle
 
+    def wrap_header(text, figure_width_in, font_pt):
+        # cn_figure_legibility_v1. bbox_inches='tight' grows the canvas to
+        # fit the title, so an unwrapped long title shrinks every panel.
+        # Roughly 0.55 em per character at the given size.
+        chars = max(40, int(figure_width_in * 72.0 / (font_pt * 0.55)))
+        return "\n".join(textwrap.wrap(text, chars)) or text
+
     # Only the classes that actually occur. Depth-only input produces DEL,
     # GAIN and balanced het; listing CNLOH and imbalance beside them implies
     # they were looked for and not found.
@@ -630,7 +638,8 @@ def main():
         built[-1].set_ylabel("cytoband", fontsize=8, rotation=0, ha="right",
                              va="center")
         built[-1].set_xlabel("%s position (Mb)" % chrom)
-        built[0].set_title("%s  --  %s" % (chrom, header), fontsize=13, pad=22)
+        built[0].set_title(wrap_header("%s  --  %s" % (chrom, header), 17, 13),
+                           fontsize=13, pad=22)
         # The call-class colours still apply to the depth scatter, so the
         # legend moves there rather than going with the panel.
         (built[1] if show_baf else built[0]).legend(
@@ -721,7 +730,7 @@ def main():
                             for n in order])
         ax_ideo.set_xticklabels([n[3:] for n in order], fontsize=9)
         ax_ideo.set_xlabel("chromosome")
-        ax_depth.set_title(header, fontsize=13)
+        ax_depth.set_title(wrap_header(header, 21, 13), fontsize=13)
         (ax_baf or ax_depth).legend(handles=baf_handles, fontsize=7, ncol=6,
                                     loc="upper right", framealpha=0.92)
         ax_cn.legend(handles=cn_handles, fontsize=8, ncol=2,
@@ -733,8 +742,11 @@ def main():
     # ---- grid -------------------------------------------------------------
     columns = max(1, args.columns)
     rows = int(math.ceil(len(order) / float(columns)))
-    figure = pyplot.figure(figsize=(5.4 * columns, 4.4 * rows))
-    outer = gridspec.GridSpec(rows, columns, hspace=0.48, wspace=0.22)
+    figure = pyplot.figure(figsize=(6.4 * columns, 4.8 * rows))
+    # cn_figure_legibility_v1: explicit margins so the panels use the canvas
+    # rather than leaving a fifth of it blank above and below the grid.
+    outer = gridspec.GridSpec(rows, columns, hspace=0.48, wspace=0.22,
+                              left=0.05, right=0.99, top=0.955, bottom=0.04)
 
     for position, chrom in enumerate(order):
         ratios = [2.4, 1.8, 2.0, 0.5] if show_baf else [2.4, 2.0, 0.5]
@@ -758,11 +770,11 @@ def main():
                 ax_baf.set_ylabel("BAF", fontsize=9)
             ax_cn.set_ylabel("CN", fontsize=9)
 
-    figure.suptitle(header, fontsize=15, y=0.998)
+    figure.suptitle(wrap_header(header, 6.4 * columns, 15), fontsize=15, y=0.992)
     figure.legend(handles=baf_handles + cn_handles, fontsize=10, ncol=8,
                   loc="lower center", bbox_to_anchor=(0.5, -0.010),
                   framealpha=0.92)
-    figure.savefig(args.output, bbox_inches="tight", dpi=110)
+    figure.savefig(args.output, bbox_inches="tight", dpi=120)
     sys.stderr.write("wrote %s\n" % args.output)
 
 

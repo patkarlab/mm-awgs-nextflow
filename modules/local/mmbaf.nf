@@ -1,3 +1,7 @@
+// RETIRED 2026-09-16 (retire_mmkaryo_v1). No longer included by any
+// workflow. Copy-number figures come from ICHORCNA_PLOT on the hg38 track;
+// see modules/local/ichorcna_plot.nf. Kept for one release so the history
+// of the copy-number tab stays readable, then delete.
 process MMBAF {
     tag      "${meta.id}"
     label    'process_high'

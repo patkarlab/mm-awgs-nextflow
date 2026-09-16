@@ -13,7 +13,8 @@ include { PREPARE_INPUT } from '../subworkflows/local/prepare_input.nf'
 include { MERGE_MINKNOW } from '../modules/local/merge_minknow.nf'
 include { T2T_TRACK     } from '../subworkflows/local/t2t_track.nf'
 include { HG38_TRACK    } from '../subworkflows/local/hg38_track.nf'
-include { COPY_NUMBER   } from '../subworkflows/local/copy_number.nf'
+// COPY_NUMBER (mmkaryo/mmbaf/mmplot on T2T) retired 2026-09-16; copy-number
+// figures now come from ICHORCNA_PLOT inside HG38_TRACK. retire_mmkaryo_v1
 include { REPORT_BUNDLE } from '../modules/local/report_bundle.nf'
 include { DASHBOARD     } from '../modules/local/dashboard.nf'
 include { IGV_SNAPSHOTS       } from '../modules/local/igv_snapshots.nf'
@@ -53,31 +54,13 @@ workflow MM_AWGS {
         )
     }
 
-    // 4a. Allele-specific copy number from the off-target reads.
-    //
-    // Runs on the T2T track: the panel BED, the centromere table and the
-    // cytoband file are all CHM13v2.0 coordinates. Distinct from ichorCNA on
-    // the hg38 track, which is a tumour-fraction estimator that happens to
-    // emit copy number; this produces segmented allele-specific states, a
-    // per-segment clonal cell fraction comparable to FISH percentages, and an
-    // explicit detection limit.
-    //
-    // Purity is read from meta.purity (sample sheet). Depth alone cannot
-    // separate purity from ploidy, and leaving it free put two cohort samples
-    // at 0.26 and 0.30 against measured flow values of 0.88 and 0.98.
-    if (!params.skip_copy_number && !params.skip_t2t_track) {
-        COPY_NUMBER(
-            T2T_TRACK.out.t2t_bam_bai,
-            PREPARE_INPUT.out.panel_beds.map { meta, bed_t2t, bed_hg38 ->
-                tuple(meta, bed_t2t)
-            },
-            file(params.t2t_fai,   checkIfExists: true),
-            file(params.t2t_fasta, checkIfExists: true),
-            params.t2t_cytobands  ? file(params.t2t_cytobands)  : file('NO_FILE'),
-            params.t2t_gene_model ? file(params.t2t_gene_model) : file('NO_FILE'),
-            file(params.g1000_t2t_vcf, checkIfExists: true)
-        )
-    }
+    // 4a. Copy number. Depth-based copy number is ichorCNA on the hg38 track,
+    // read into a karyotype by ICHORKARYO and drawn by ICHORCNA_PLOT, both
+    // inside HG38_TRACK. Allelic state at the eight wide panel windows is
+    // GENEBAF, also inside HG38_TRACK. The former T2T COPY_NUMBER subworkflow
+    // (mmkaryo/mmbaf/mmplot) is retired: it masked the panel before
+    // segmenting, which removed focal del(17p) from the data, and its free
+    // purity/ploidy fit contradicted the flow-purity, diploid-pinned tables.
 
     // 4b. IGV snapshots.
     //
@@ -127,14 +110,6 @@ workflow MM_AWGS {
                 .mix(T2T_TRACK.out.translocations.map   { it -> 'ok' })
                 .mix(T2T_TRACK.out.qc_coverage.map      { it -> 'ok' })
         }
-        // The bundle scans the published tree, so it must not start before the
-        // copy number figures and tables have been published.
-        if (!params.skip_copy_number && !params.skip_t2t_track) {
-            ready = ready
-                .mix(COPY_NUMBER.out.karyotype.map   { it -> 'ok' })
-                .mix(COPY_NUMBER.out.plot_genome.map { it -> 'ok' })
-                .mix(COPY_NUMBER.out.baf.map         { it -> 'ok' })
-        }
         if (!params.skip_hg38_track) {
             ready = ready
                 .mix(HG38_TRACK.out.ichorcna_outdir.map { it -> 'ok' })
@@ -143,6 +118,10 @@ workflow MM_AWGS {
                 // bundle_guard_v1: the per-sample BAF figures were never in
                 // the signal, so the bundle could start before they existed.
                 .mix(HG38_TRACK.out.baf_cn_figures.map  { it -> 'ok' })
+                // Copy-number figures and the karyotype JSON are both
+                // collected by the bundle.
+                .mix(HG38_TRACK.out.ichorkaryo_json.map { it -> 'ok' })
+                .mix(HG38_TRACK.out.cn_figures.map      { it -> 'ok' })
         }
 
         // IGV pages are collected by the bundle, so the bundle must not

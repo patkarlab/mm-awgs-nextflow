@@ -317,11 +317,27 @@ def summarise_arms(segments, bounds, sex, baseline=2, threshold=0.0):
     return arms
 
 
-def iscn_string(arms, sex):
-    """Group arms by copy number into an ISCN-style seq line."""
+def iscn_string(arms, sex, baseline=2):
+    """Group abnormal arms by copy number into an ISCN-style seq line.
+
+    cn_figure_legibility_v1: only arms whose copy number differs from
+    the expected value are listed, as an ISCN line would. Autosomes are
+    judged against the modal baseline, chrX/chrY against sex. Listing
+    every normal arm made the string several hundred characters long
+    and unusable as a figure title.
+    """
     by_cn = defaultdict(list)
     for label, value in arms.items():
-        by_cn[value["cn"]].append(label)
+        cn = value.get("cn")
+        if cn is None:
+            continue
+        chrom = "chr" + label.rstrip("pq")
+        expected = expected_copies_for(chrom, sex, baseline)
+        if expected is not None and cn == expected:
+            continue
+        by_cn[cn].append(label)
+    if not by_cn:
+        return "seq: no arm-level change"
 
     def sort_key(label):
         body = label.rstrip("pq")
@@ -955,7 +971,7 @@ def main():
         "sex": sex,
         "n_segments": len(segments),
         "arms": arms,
-        "ISCN_karyotype": iscn_string(arms, sex),
+        "ISCN_karyotype": iscn_string(arms, sex, baseline),
         "ploidy_class": ploidy_calls["ploidy_class"],
         "hyperdiploid": ploidy_calls["hyperdiploid"],
         "trisomies": ploidy_calls["trisomies"],
