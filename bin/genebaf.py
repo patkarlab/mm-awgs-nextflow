@@ -507,14 +507,20 @@ def main():
                 n_other += 1
                 continue
             expected_het.append(2 * af * (1 - af))
+            # sites_all_v1: every usable site is written, homozygous ones
+            # included. A deletion or LOH empties the heterozygous band into
+            # the 0/1 rows, and a reader needs to see those rows to know the
+            # window was measured rather than empty.
+            frac = a / n
             if r >= args.min_alt and a >= args.min_alt:
                 n_het += 1
-                frac = a / n
                 afs.append(frac)
                 devs.append(abs(frac - 0.5))
-                per_site_rows.append((name, chrom, pos, r, a, round(frac, 3)))
+                per_site_rows.append((name, chrom, pos, r, a, round(frac, 3), "het"))
             else:
                 n_hom += 1
+                per_site_rows.append((name, chrom, pos, r, a, round(frac, 3),
+                                      "hom_alt" if a > r else "hom_ref"))
 
         expected_het_fraction = (statistics.mean(expected_het) if expected_het else 0.0)
         in_band = (sum(1 for f in afs if 0.40 <= f <= 0.60) / n_het) if n_het else 0.0
@@ -575,7 +581,7 @@ def main():
             handle.write("\t".join("" if row[c] is None else str(row[c]) for c in cols) + "\n")
 
     with open(args.out_prefix + ".genebaf.sites.tsv", "w", encoding="utf-8") as handle:
-        handle.write("gene\tchrom\tpos\tref_reads\talt_reads\talt_fraction\n")
+        handle.write("gene\tchrom\tpos\tref_reads\talt_reads\talt_fraction\tcall\n")
         for r in per_site_rows:
             handle.write("\t".join(str(x) for x in r) + "\n")
 
