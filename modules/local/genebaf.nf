@@ -36,6 +36,9 @@ process GENEBAF {
     // in 14 of 21 samples, with 150 of 150 sites heterozygous in some and 0 of 150
     // in others, all at MAPQ 60. Pooling the windows on an arm gives observations
     // that do sit in different blocks.
+    // genebaf_scope_span_v1: allelic state at the eight wide windows only;
+    // depth on all. IGH/IGK/IGL are excluded inside genebaf.py regardless.
+    def baf_regions_arg = params.genebaf_baf_regions ? "--baf-regions ${params.genebaf_baf_regions}" : ''
     """
     set -euo pipefail
 
@@ -52,7 +55,8 @@ process GENEBAF {
         --min-mapq ${params.genebaf_min_mapq} \\
         --min-arm-windows ${params.genebaf_min_arm_windows} \\
         --min-arm-sites ${params.genebaf_min_arm_sites} \\
-        --max-arm-p ${params.genebaf_max_arm_p}
+        --max-arm-p ${params.genebaf_max_arm_p} \\
+        ${baf_regions_arg}
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":

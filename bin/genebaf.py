@@ -91,6 +91,48 @@ def load_bed(path):
     return windows
 
 
+def load_regions(path):
+    """{chrom: [(start, end), ...]} from a BED; name column ignored."""
+    regions = defaultdict(list)
+    with open(path, encoding="utf-8") as handle:
+        for line in handle:
+            if not line.strip() or line.startswith(("#", "track", "browser")):
+                continue
+            parts = line.rstrip("\n").split("\t")
+            if len(parts) < 3:
+                continue
+            chrom = canonical(parts[0])
+            if chrom is None:
+                continue
+            try:
+                regions[chrom].append((int(parts[1]), int(parts[2])))
+            except ValueError:
+                continue
+    return regions
+
+
+def baf_scope_of(window, baf_regions, exclude_names):
+    """genebaf_scope_span_v1: why a window is or is not assessed for BAF.
+
+    Returns 'assessed', 'excluded_ig' or 'outside_baf_regions'. The Ig
+    exclusion is applied first and unconditionally: V(D)J recombination
+    and somatic hypermutation make allele fractions at IGH/IGK/IGL clonal
+    rather than germline, so they carry no allelic-state information
+    whatever the region list says. With no region list every other window
+    is assessed, which is the pre-scope behaviour.
+    """
+    chrom, start, end, name = window
+    upper = name.upper()
+    if any(token and token in upper for token in exclude_names):
+        return "excluded_ig"
+    if baf_regions is None:
+        return "assessed"
+    for r_start, r_end in baf_regions.get(chrom, ()):
+        if start < r_end and r_start < end:
+            return "assessed"
+    return "outside_baf_regions"
+
+
 def load_sites_in_windows(vcf_path, windows, af_field, min_af, max_af):
     """{(chrom,start,end,name): [(pos, ref, alt, af), ...]} for sites inside windows."""
     by_chrom = defaultdict(list)
@@ -299,17 +341,27 @@ def arm_loh(rows, arm_bounds, min_windows, min_usable, max_p):
     """
     pooled = {}
     for row in rows:
+        # genebaf_scope_span_v1: a window outside the BAF scope has no
+        # sites and must not count toward n_windows either.
+        if row.get("baf_scope", "assessed") != "assessed":
+            continue
         arm = arm_of(row["chrom"], row["start"], row["end"], arm_bounds)
         if arm is None or row["n_usable"] == 0:
             continue
         entry = pooled.setdefault(arm, {"chrom": row["chrom"], "n_windows": 0,
                                         "n_het": 0, "n_usable": 0,
-                                        "expected": [], "genes": []})
+                                        "expected": [], "genes": [],
+                                        "span_start": row["start"],
+                                        "span_end": row["end"],
+                                        "covered_bp": 0})
         entry["n_windows"] += 1
         entry["n_het"] += row["n_het"]
         entry["n_usable"] += row["n_usable"]
         entry["expected"].append(row["expected_het_fraction"] * row["n_usable"])
         entry["genes"].append(row["gene"])
+        entry["span_start"] = min(entry["span_start"], row["start"])
+        entry["span_end"] = max(entry["span_end"], row["end"])
+        entry["covered_bp"] += max(0, row["end"] - row["start"])
 
     out = {}
     for arm, entry in sorted(pooled.items()):
@@ -327,10 +379,22 @@ def arm_loh(rows, arm_bounds, min_windows, min_usable, max_p):
             verdict = "loh" if pval < max_p and (ratio is not None and ratio < 0.5) \
                 else "retained"
 
+        # genebaf_scope_span_v1: what the pooled windows actually cover, so a
+        # verdict labelled '1p' can be read as 'two windows 3 Mb apart on 1p'.
+        # Arm length is p: chrom start to centromere, q: centromere to end.
+        chrom_start, cen_start, cen_end, chrom_end = arm_bounds[entry["chrom"]]
+        arm_bp = (cen_start - chrom_start) if arm.endswith("p") else (chrom_end - cen_end)
+        span_bp = entry["span_end"] - entry["span_start"]
         out[arm] = {
             "chrom": entry["chrom"],
             "n_windows": entry["n_windows"],
             "genes": entry["genes"],
+            "span_start": entry["span_start"],
+            "span_end": entry["span_end"],
+            "covered_bp": entry["covered_bp"],
+            "arm_bp": arm_bp,
+            "covered_fraction": (round(entry["covered_bp"] / arm_bp, 4) if arm_bp > 0 else None),
+            "span_fraction": (round(span_bp / arm_bp, 4) if arm_bp > 0 else None),
             "n_usable": n,
             "n_het": k,
             "expected_het_fraction": round(expected_fraction, 3),
@@ -382,6 +446,16 @@ def main():
     parser.add_argument("--max-other-fraction", type=float, default=0.2,
                         help="drop sites where third-allele reads exceed this "
                              "fraction of depth [0.2]")
+    # genebaf_scope_span_v1
+    parser.add_argument("--baf-regions", default=None,
+                        help="BED of regions at which allelic state is measured. "
+                             "A panel window is assessed when it overlaps any "
+                             "region; the rest keep depth and log2 only. Without "
+                             "it every non-Ig window is assessed.")
+    parser.add_argument("--baf-exclude", default="IGH,IGK,IGL",
+                        help="comma-separated window-name substrings never "
+                             "assessed for allelic state, whatever --baf-regions "
+                             "says [IGH,IGK,IGL]")
     args = parser.parse_args()
 
     windows = load_bed(args.panel_bed)
@@ -389,10 +463,21 @@ def main():
         sys.exit(f"ERROR: no usable windows in {args.panel_bed}")
     sys.stderr.write(f"{len(windows)} panel windows\n")
 
-    sites = load_sites_in_windows(args.sites_vcf, windows, args.af_field,
+    # genebaf_scope_span_v1: decide the BAF scope first, and load sites only
+    # for windows that will be assessed.
+    baf_regions = load_regions(args.baf_regions) if args.baf_regions else None
+    exclude_names = [t.strip().upper() for t in args.baf_exclude.split(",") if t.strip()]
+    scope = {w: baf_scope_of(w, baf_regions, exclude_names) for w in windows}
+    baf_windows = [w for w in windows if scope[w] == "assessed"]
+    sys.stderr.write(f"{len(baf_windows)} windows in BAF scope"
+                     f" ({sum(1 for s in scope.values() if s == 'excluded_ig')} Ig excluded,"
+                     f" {sum(1 for s in scope.values() if s == 'outside_baf_regions')}"
+                     f" outside --baf-regions)\n")
+
+    sites = load_sites_in_windows(args.sites_vcf, baf_windows, args.af_field,
                                   args.min_af, args.max_af)
     total_sites = sum(len(v) for v in sites.values())
-    sys.stderr.write(f"{total_sites} common SNPs inside panel windows\n")
+    sys.stderr.write(f"{total_sites} common SNPs inside BAF-scope windows\n")
 
     bam = pysam.AlignmentFile(args.bam, "rb")
     rows = []
@@ -408,9 +493,10 @@ def main():
         n_het = n_hom = n_lowdepth = n_other = 0
         expected_het = []
 
-        site_list = sites.get(window, [])
-        counts = tally_window(bam, chrom, start, end, site_list,
-                              args.min_mapq, args.min_baseq)
+        site_list = sites.get(window, []) if scope[window] == "assessed" else []
+        counts = (tally_window(bam, chrom, start, end, site_list,
+                               args.min_mapq, args.min_baseq)
+                  if site_list else {})
         for pos, ref, alt, af in site_list:
             r, a, o = counts[pos]
             n = r + a
@@ -432,11 +518,15 @@ def main():
 
         expected_het_fraction = (statistics.mean(expected_het) if expected_het else 0.0)
         in_band = (sum(1 for f in afs if 0.40 <= f <= 0.60) / n_het) if n_het else 0.0
-        state, stat = classify(n_het, n_hom, expected_het_fraction, devs, in_band,
-                               args.min_hets, args.loh_ratio)
+        if scope[window] == "assessed":
+            state, stat = classify(n_het, n_hom, expected_het_fraction, devs, in_band,
+                                   args.min_hets, args.loh_ratio)
+        else:
+            state, stat = "not_assessed", None
 
         rows.append({
             "gene": name, "chrom": chrom, "start": start, "end": end,
+            "baf_scope": scope[window],
             "mean_depth": round(depth, 2) if depth == depth else None,
             "n_sites": len(sites.get(window, [])),
             "n_usable": n_het + n_hom,
@@ -460,17 +550,22 @@ def main():
         with open(args.out_prefix + ".armloh.tsv", "w", encoding="utf-8") as handle:
             handle.write("arm\tchrom\tn_windows\tn_usable\tn_het\t"
                          "expected_het_fraction\tobserved_het_fraction\tratio\t"
-                         "p_value\tverdict\tgenes\n")
+                         "p_value\tverdict\tspan_start\tspan_end\tcovered_bp\t"
+                         "arm_bp\tcovered_fraction\tspan_fraction\tgenes\n")
             for arm, v in arms.items():
                 handle.write("\t".join(str(x) for x in (
                     arm, v["chrom"], v["n_windows"], v["n_usable"], v["n_het"],
                     v["expected_het_fraction"], v["observed_het_fraction"],
                     "" if v["ratio"] is None else v["ratio"],
                     "" if v["p_value"] is None else v["p_value"],
-                    v["verdict"], ",".join(v["genes"]))) + "\n")
+                    v["verdict"],
+                    v["span_start"], v["span_end"], v["covered_bp"], v["arm_bp"],
+                    "" if v["covered_fraction"] is None else v["covered_fraction"],
+                    "" if v["span_fraction"] is None else v["span_fraction"],
+                    ",".join(v["genes"]))) + "\n")
 
     with open(args.out_prefix + ".genebaf.tsv", "w", encoding="utf-8") as handle:
-        cols = ["gene", "chrom", "start", "end", "mean_depth", "n_sites", "n_usable",
+        cols = ["gene", "chrom", "start", "end", "baf_scope", "mean_depth", "n_sites", "n_usable",
                 "n_het", "n_hom", "n_lowdepth", "n_other_allele",
                 "expected_het_fraction", "observed_het_fraction",
                 "median_dev_from_half", "fraction_in_central_band",
@@ -508,7 +603,15 @@ def main():
                        ("min_depth", "min_alt", "min_mapq", "min_baseq",
                         "min_hets", "loh_ratio", "min_af", "max_af", "af_field")},
         "states": {s: sum(1 for r in rows if r["allelic_state"] == s)
-                   for s in ("balanced", "imbalanced", "insufficient")},
+                   for s in ("balanced", "imbalanced", "insufficient", "not_assessed")},
+        "baf_scope": {
+            "regions": args.baf_regions,
+            "exclude": exclude_names,
+            "assessed_windows": [w[3] for w in baf_windows],
+            "n_assessed": len(baf_windows),
+            "n_excluded_ig": sum(1 for s in scope.values() if s == "excluded_ig"),
+            "n_outside_regions": sum(1 for s in scope.values() if s == "outside_baf_regions"),
+        },
         "imbalanced_genes": [r["gene"] for r in rows if r["allelic_state"] == "imbalanced"],
         "arms": arms,
         "loh_arms": [a for a, v in arms.items() if v["verdict"] == "loh"],
