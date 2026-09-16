@@ -1,0 +1,1076 @@
+{
+  "sample": "12F2023670",
+  "bam": "results_v7/hg38/bams/12F2023670.hg38.bam",
+  "parameters": {
+    "min_depth": 15,
+    "min_alt": 2,
+    "low": 0.08,
+    "mid_low": 0.35,
+    "mid_high": 0.65,
+    "high": 0.92,
+    "af_field": "SAS_AF",
+    "min_af": 0.25,
+    "max_af": 0.75
+  },
+  "primary": {
+    "autosomal": {
+      "usable_sites": 6858,
+      "intermediate_sites": 1752,
+      "intermediate_fraction": 0.2555,
+      "observed_het_fraction": 0.417,
+      "expected_het_fraction": 0.4585,
+      "het_ratio": 0.91
+    },
+    "autosomal_af_histogram_20bins": [
+      2085,
+      227,
+      200,
+      143,
+      168,
+      192,
+      156,
+      166,
+      197,
+      167,
+      223,
+      169,
+      189,
+      144,
+      128,
+      147,
+      204,
+      193,
+      265,
+      1495
+    ],
+    "chrX": null,
+    "depth_ratio_chrX_over_autosome": 0.602,
+    "depth_ratio_chrY_over_autosome": 0.1,
+    "sex_from_depth": "XY_loss_of_Y_or_unread_Y",
+    "per_window": {
+      "ATM": {
+        "usable_sites": 185,
+        "intermediate_sites": 24,
+        "intermediate_fraction": 0.1297,
+        "observed_het_fraction": 1.0,
+        "expected_het_fraction": 0.4459,
+        "het_ratio": 2.243
+      },
+      "BCL2": {
+        "usable_sites": 234,
+        "intermediate_sites": 57,
+        "intermediate_fraction": 0.2436,
+        "observed_het_fraction": 0.8248,
+        "expected_het_fraction": 0.4591,
+        "het_ratio": 1.797
+      },
+      "BIRC3": {
+        "usable_sites": 52,
+        "intermediate_sites": 2,
+        "intermediate_fraction": 0.0385,
+        "observed_het_fraction": 0.0769,
+        "expected_het_fraction": 0.4443,
+        "het_ratio": 0.173
+      },
+      "BRAF": {
+        "usable_sites": 145,
+        "intermediate_sites": 0,
+        "intermediate_fraction": 0.0,
+        "observed_het_fraction": 0.0207,
+        "expected_het_fraction": 0.435,
+        "het_ratio": 0.048
+      },
+      "CCND1": {
+        "usable_sites": 733,
+        "intermediate_sites": 87,
+        "intermediate_fraction": 0.1187,
+        "observed_het_fraction": 0.5607,
+        "expected_het_fraction": 0.4629,
+        "het_ratio": 1.211
+      },
+      "CCND2": {
+        "usable_sites": 209,
+        "intermediate_sites": 50,
+        "intermediate_fraction": 0.2392,
+        "observed_het_fraction": 0.2871,
+        "expected_het_fraction": 0.4484,
+        "het_ratio": 0.64
+      },
+      "CCND3": {
+        "usable_sites": 93,
+        "intermediate_sites": 40,
+        "intermediate_fraction": 0.4301,
+        "observed_het_fraction": 0.4301,
+        "expected_het_fraction": 0.4654,
+        "het_ratio": 0.924
+      },
+      "CDKN2A": {
+        "usable_sites": 42,
+        "intermediate_sites": 6,
+        "intermediate_fraction": 0.1429,
+        "observed_het_fraction": 0.4286,
+        "expected_het_fraction": 0.4602,
+        "het_ratio": 0.931
+      },
+      "CRBN": {
+        "usable_sites": 110,
+        "intermediate_sites": 7,
+        "intermediate_fraction": 0.0636,
+        "observed_het_fraction": 0.1545,
+        "expected_het_fraction": 0.4711,
+        "het_ratio": 0.328
+      },
+      "CUL4A": {
+        "usable_sites": 97,
+        "intermediate_sites": 4,
+        "intermediate_fraction": 0.0412,
+        "observed_het_fraction": 0.0515,
+        "expected_het_fraction": 0.4941,
+        "het_ratio": 0.104
+      },
+      "CXCR4": {
+        "usable_sites": 16,
+        "intermediate_sites": 9,
+        "intermediate_fraction": 0.5625,
+        "observed_het_fraction": 0.875,
+        "expected_het_fraction": 0.4506,
+        "het_ratio": 1.942
+      },
+      "DEFB1": {
+        "usable_sites": 9,
+        "intermediate_sites": 1,
+        "intermediate_fraction": 0.1111,
+        "observed_het_fraction": 0.2222,
+        "expected_het_fraction": 0.4711,
+        "het_ratio": 0.472
+      },
+      "DIS3": {
+        "usable_sites": 5,
+        "intermediate_sites": 2,
+        "intermediate_fraction": 0.4,
+        "observed_het_fraction": 0.4,
+        "expected_het_fraction": 0.4372,
+        "het_ratio": 0.915
+      },
+      "EGFR": {
+        "usable_sites": 153,
+        "intermediate_sites": 35,
+        "intermediate_fraction": 0.2288,
+        "observed_het_fraction": 0.4967,
+        "expected_het_fraction": 0.4739,
+        "het_ratio": 1.048
+      },
+      "EGR1": {
+        "usable_sites": 5,
+        "intermediate_sites": 2,
+        "intermediate_fraction": 0.4,
+        "observed_het_fraction": 1.0,
+        "expected_het_fraction": 0.4531,
+        "het_ratio": 2.207
+      },
+      "FBXW7": {
+        "usable_sites": 68,
+        "intermediate_sites": 2,
+        "intermediate_fraction": 0.0294,
+        "observed_het_fraction": 0.0588,
+        "expected_het_fraction": 0.4793,
+        "het_ratio": 0.123
+      },
+      "FCRL5/FCRL4": {
+        "usable_sites": 57,
+        "intermediate_sites": 30,
+        "intermediate_fraction": 0.5263,
+        "observed_het_fraction": 0.614,
+        "expected_het_fraction": 0.4723,
+        "het_ratio": 1.3
+      },
+      "FGFR3/NSD2": {
+        "usable_sites": 1,
+        "intermediate_sites": 0,
+        "intermediate_fraction": 0.0,
+        "observed_het_fraction": 0.0,
+        "expected_het_fraction": 0.4998,
+        "het_ratio": 0.0
+      },
+      "IDH1": {
+        "usable_sites": 16,
+        "intermediate_sites": 5,
+        "intermediate_fraction": 0.3125,
+        "observed_het_fraction": 0.3125,
+        "expected_het_fraction": 0.4253,
+        "het_ratio": 0.735
+      },
+      "IDH2": {
+        "usable_sites": 155,
+        "intermediate_sites": 23,
+        "intermediate_fraction": 0.1484,
+        "observed_het_fraction": 0.5419,
+        "expected_het_fraction": 0.4462,
+        "het_ratio": 1.215
+      },
+      "IGL/IGLL5": {
+        "usable_sites": 221,
+        "intermediate_sites": 53,
+        "intermediate_fraction": 0.2398,
+        "observed_het_fraction": 0.2579,
+        "expected_het_fraction": 0.4633,
+        "het_ratio": 0.557
+      },
+      "IKZF1": {
+        "usable_sites": 77,
+        "intermediate_sites": 21,
+        "intermediate_fraction": 0.2727,
+        "observed_het_fraction": 0.7403,
+        "expected_het_fraction": 0.4561,
+        "het_ratio": 1.623
+      },
+      "IKZF3": {
+        "usable_sites": 27,
+        "intermediate_sites": 24,
+        "intermediate_fraction": 0.8889,
+        "observed_het_fraction": 0.8889,
+        "expected_het_fraction": 0.437,
+        "het_ratio": 2.034
+      },
+      "IRF4": {
+        "usable_sites": 37,
+        "intermediate_sites": 28,
+        "intermediate_fraction": 0.7568,
+        "observed_het_fraction": 0.8108,
+        "expected_het_fraction": 0.4566,
+        "het_ratio": 1.776
+      },
+      "KMT2C": {
+        "usable_sites": 53,
+        "intermediate_sites": 3,
+        "intermediate_fraction": 0.0566,
+        "observed_het_fraction": 0.0566,
+        "expected_het_fraction": 0.4234,
+        "het_ratio": 0.134
+      },
+      "KRAS": {
+        "usable_sites": 13,
+        "intermediate_sites": 0,
+        "intermediate_fraction": 0.0,
+        "observed_het_fraction": 0.0,
+        "expected_het_fraction": 0.4438,
+        "het_ratio": 0.0
+      },
+      "LRRK2": {
+        "usable_sites": 51,
+        "intermediate_sites": 1,
+        "intermediate_fraction": 0.0196,
+        "observed_het_fraction": 0.0196,
+        "expected_het_fraction": 0.4685,
+        "het_ratio": 0.042
+      },
+      "MAFA": {
+        "usable_sites": 290,
+        "intermediate_sites": 87,
+        "intermediate_fraction": 0.3,
+        "observed_het_fraction": 0.331,
+        "expected_het_fraction": 0.4569,
+        "het_ratio": 0.725
+      },
+      "MAFB": {
+        "usable_sites": 114,
+        "intermediate_sites": 33,
+        "intermediate_fraction": 0.2895,
+        "observed_het_fraction": 0.2895,
+        "expected_het_fraction": 0.4603,
+        "het_ratio": 0.629
+      },
+      "MAP3K14": {
+        "usable_sites": 4,
+        "intermediate_sites": 3,
+        "intermediate_fraction": 0.75,
+        "observed_het_fraction": 0.75,
+        "expected_het_fraction": 0.4777,
+        "het_ratio": 1.57
+      },
+      "MAX": {
+        "usable_sites": 49,
+        "intermediate_sites": 13,
+        "intermediate_fraction": 0.2653,
+        "observed_het_fraction": 0.3061,
+        "expected_het_fraction": 0.4722,
+        "het_ratio": 0.648
+      },
+      "MYC": {
+        "usable_sites": 1948,
+        "intermediate_sites": 486,
+        "intermediate_fraction": 0.2495,
+        "observed_het_fraction": 0.2654,
+        "expected_het_fraction": 0.4537,
+        "het_ratio": 0.585
+      },
+      "MYD88": {
+        "usable_sites": 5,
+        "intermediate_sites": 2,
+        "intermediate_fraction": 0.4,
+        "observed_het_fraction": 1.0,
+        "expected_het_fraction": 0.4018,
+        "het_ratio": 2.489
+      },
+      "NFKB1": {
+        "usable_sites": 132,
+        "intermediate_sites": 92,
+        "intermediate_fraction": 0.697,
+        "observed_het_fraction": 0.8788,
+        "expected_het_fraction": 0.4541,
+        "het_ratio": 1.935
+      },
+      "NR3C1": {
+        "usable_sites": 21,
+        "intermediate_sites": 6,
+        "intermediate_fraction": 0.2857,
+        "observed_het_fraction": 0.4762,
+        "expected_het_fraction": 0.4608,
+        "het_ratio": 1.033
+      },
+      "NRAS": {
+        "usable_sites": 6,
+        "intermediate_sites": 1,
+        "intermediate_fraction": 0.1667,
+        "observed_het_fraction": 0.1667,
+        "expected_het_fraction": 0.4588,
+        "het_ratio": 0.363
+      },
+      "PAX5": {
+        "usable_sites": 183,
+        "intermediate_sites": 58,
+        "intermediate_fraction": 0.3169,
+        "observed_het_fraction": 0.5956,
+        "expected_het_fraction": 0.4623,
+        "het_ratio": 1.288
+      },
+      "PIK3CA": {
+        "usable_sites": 53,
+        "intermediate_sites": 31,
+        "intermediate_fraction": 0.5849,
+        "observed_het_fraction": 0.6604,
+        "expected_het_fraction": 0.4459,
+        "het_ratio": 1.481
+      },
+      "PIM1": {
+        "usable_sites": 64,
+        "intermediate_sites": 31,
+        "intermediate_fraction": 0.4844,
+        "observed_het_fraction": 0.6875,
+        "expected_het_fraction": 0.4773,
+        "het_ratio": 1.441
+      },
+      "PRDM1": {
+        "usable_sites": 8,
+        "intermediate_sites": 4,
+        "intermediate_fraction": 0.5,
+        "observed_het_fraction": 0.5,
+        "expected_het_fraction": 0.4649,
+        "het_ratio": 1.075
+      },
+      "PRKD2": {
+        "usable_sites": 25,
+        "intermediate_sites": 15,
+        "intermediate_fraction": 0.6,
+        "observed_het_fraction": 0.64,
+        "expected_het_fraction": 0.4624,
+        "het_ratio": 1.384
+      },
+      "PSMB5": {
+        "usable_sites": 7,
+        "intermediate_sites": 1,
+        "intermediate_fraction": 0.1429,
+        "observed_het_fraction": 0.1429,
+        "expected_het_fraction": 0.4819,
+        "het_ratio": 0.296
+      },
+      "PSMG2": {
+        "usable_sites": 147,
+        "intermediate_sites": 22,
+        "intermediate_fraction": 0.1497,
+        "observed_het_fraction": 0.551,
+        "expected_het_fraction": 0.4559,
+        "het_ratio": 1.209
+      },
+      "RB1": {
+        "usable_sites": 14,
+        "intermediate_sites": 5,
+        "intermediate_fraction": 0.3571,
+        "observed_het_fraction": 0.5714,
+        "expected_het_fraction": 0.4628,
+        "het_ratio": 1.235
+      },
+      "RFTN1": {
+        "usable_sites": 142,
+        "intermediate_sites": 11,
+        "intermediate_fraction": 0.0775,
+        "observed_het_fraction": 0.1268,
+        "expected_het_fraction": 0.4753,
+        "het_ratio": 0.267
+      },
+      "SETD2": {
+        "usable_sites": 90,
+        "intermediate_sites": 35,
+        "intermediate_fraction": 0.3889,
+        "observed_het_fraction": 1.0,
+        "expected_het_fraction": 0.4787,
+        "het_ratio": 2.089
+      },
+      "SP140": {
+        "usable_sites": 22,
+        "intermediate_sites": 5,
+        "intermediate_fraction": 0.2273,
+        "observed_het_fraction": 0.2727,
+        "expected_het_fraction": 0.4769,
+        "het_ratio": 0.572
+      },
+      "STAT3": {
+        "usable_sites": 31,
+        "intermediate_sites": 10,
+        "intermediate_fraction": 0.3226,
+        "observed_het_fraction": 0.3548,
+        "expected_het_fraction": 0.4853,
+        "het_ratio": 0.731
+      },
+      "TENT5C": {
+        "usable_sites": 23,
+        "intermediate_sites": 13,
+        "intermediate_fraction": 0.5652,
+        "observed_het_fraction": 0.5652,
+        "expected_het_fraction": 0.4424,
+        "het_ratio": 1.278
+      },
+      "TET2": {
+        "usable_sites": 30,
+        "intermediate_sites": 17,
+        "intermediate_fraction": 0.5667,
+        "observed_het_fraction": 0.6333,
+        "expected_het_fraction": 0.4647,
+        "het_ratio": 1.363
+      },
+      "TNFAIP8": {
+        "usable_sites": 34,
+        "intermediate_sites": 10,
+        "intermediate_fraction": 0.2941,
+        "observed_het_fraction": 0.4118,
+        "expected_het_fraction": 0.4735,
+        "het_ratio": 0.87
+      },
+      "TP53+TNFSF12": {
+        "usable_sites": 152,
+        "intermediate_sites": 53,
+        "intermediate_fraction": 0.3487,
+        "observed_het_fraction": 0.3816,
+        "expected_het_fraction": 0.4577,
+        "het_ratio": 0.834
+      },
+      "TRAF2": {
+        "usable_sites": 50,
+        "intermediate_sites": 2,
+        "intermediate_fraction": 0.04,
+        "observed_het_fraction": 0.08,
+        "expected_het_fraction": 0.458,
+        "het_ratio": 0.175
+      },
+      "TRAF3": {
+        "usable_sites": 35,
+        "intermediate_sites": 10,
+        "intermediate_fraction": 0.2857,
+        "observed_het_fraction": 0.2857,
+        "expected_het_fraction": 0.4449,
+        "het_ratio": 0.642
+      },
+      "TXNDC5": {
+        "usable_sites": 44,
+        "intermediate_sites": 10,
+        "intermediate_fraction": 0.2273,
+        "observed_het_fraction": 0.2273,
+        "expected_het_fraction": 0.4774,
+        "het_ratio": 0.476
+      },
+      "UBR5": {
+        "usable_sites": 18,
+        "intermediate_sites": 10,
+        "intermediate_fraction": 0.5556,
+        "observed_het_fraction": 0.6111,
+        "expected_het_fraction": 0.4565,
+        "het_ratio": 1.339
+      },
+      "UST": {
+        "usable_sites": 91,
+        "intermediate_sites": 49,
+        "intermediate_fraction": 0.5385,
+        "observed_het_fraction": 0.5495,
+        "expected_het_fraction": 0.4675,
+        "het_ratio": 1.175
+      },
+      "WWOX/MAF": {
+        "usable_sites": 65,
+        "intermediate_sites": 31,
+        "intermediate_fraction": 0.4769,
+        "observed_het_fraction": 0.5077,
+        "expected_het_fraction": 0.4596,
+        "het_ratio": 1.105
+      },
+      "XBP1": {
+        "usable_sites": 4,
+        "intermediate_sites": 1,
+        "intermediate_fraction": 0.25,
+        "observed_het_fraction": 0.25,
+        "expected_het_fraction": 0.4874,
+        "het_ratio": 0.513
+      },
+      "ZNF292": {
+        "usable_sites": 93,
+        "intermediate_sites": 79,
+        "intermediate_fraction": 0.8495,
+        "observed_het_fraction": 0.8925,
+        "expected_het_fraction": 0.4643,
+        "het_ratio": 1.922
+      }
+    }
+  },
+  "comparison": {
+    "autosomal": {
+      "usable_sites": 20571,
+      "intermediate_sites": 3235,
+      "intermediate_fraction": 0.1573,
+      "observed_het_fraction": 0.4746,
+      "expected_het_fraction": 0.4599,
+      "het_ratio": 1.032
+    },
+    "autosomal_af_histogram_20bins": [
+      6247,
+      110,
+      101,
+      168,
+      262,
+      432,
+      570,
+      746,
+      1229,
+      1052,
+      1598,
+      1005,
+      827,
+      587,
+      378,
+      315,
+      184,
+      110,
+      168,
+      4482
+    ],
+    "chrX": null,
+    "depth_ratio_chrX_over_autosome": 0.443,
+    "depth_ratio_chrY_over_autosome": 0.244,
+    "sex_from_depth": "XY",
+    "per_window": {
+      "ATM": {
+        "usable_sites": 203,
+        "intermediate_sites": 43,
+        "intermediate_fraction": 0.2118,
+        "observed_het_fraction": 1.0,
+        "expected_het_fraction": 0.4458,
+        "het_ratio": 2.243
+      },
+      "BCL2": {
+        "usable_sites": 241,
+        "intermediate_sites": 14,
+        "intermediate_fraction": 0.0581,
+        "observed_het_fraction": 0.3071,
+        "expected_het_fraction": 0.4588,
+        "het_ratio": 0.669
+      },
+      "BIRC3": {
+        "usable_sites": 72,
+        "intermediate_sites": 2,
+        "intermediate_fraction": 0.0278,
+        "observed_het_fraction": 0.0417,
+        "expected_het_fraction": 0.4472,
+        "het_ratio": 0.093
+      },
+      "BRAF": {
+        "usable_sites": 149,
+        "intermediate_sites": 2,
+        "intermediate_fraction": 0.0134,
+        "observed_het_fraction": 0.0805,
+        "expected_het_fraction": 0.4355,
+        "het_ratio": 0.185
+      },
+      "CCND1": {
+        "usable_sites": 1002,
+        "intermediate_sites": 103,
+        "intermediate_fraction": 0.1028,
+        "observed_het_fraction": 0.499,
+        "expected_het_fraction": 0.4641,
+        "het_ratio": 1.075
+      },
+      "CCND2": {
+        "usable_sites": 808,
+        "intermediate_sites": 193,
+        "intermediate_fraction": 0.2389,
+        "observed_het_fraction": 0.5347,
+        "expected_het_fraction": 0.4585,
+        "het_ratio": 1.166
+      },
+      "CCND3": {
+        "usable_sites": 520,
+        "intermediate_sites": 34,
+        "intermediate_fraction": 0.0654,
+        "observed_het_fraction": 0.2019,
+        "expected_het_fraction": 0.457,
+        "het_ratio": 0.442
+      },
+      "CDKN2A": {
+        "usable_sites": 64,
+        "intermediate_sites": 6,
+        "intermediate_fraction": 0.0938,
+        "observed_het_fraction": 0.9062,
+        "expected_het_fraction": 0.4606,
+        "het_ratio": 1.967
+      },
+      "CRBN": {
+        "usable_sites": 191,
+        "intermediate_sites": 33,
+        "intermediate_fraction": 0.1728,
+        "observed_het_fraction": 0.4607,
+        "expected_het_fraction": 0.4673,
+        "het_ratio": 0.986
+      },
+      "CUL4A": {
+        "usable_sites": 109,
+        "intermediate_sites": 26,
+        "intermediate_fraction": 0.2385,
+        "observed_het_fraction": 0.9908,
+        "expected_het_fraction": 0.4944,
+        "het_ratio": 2.004
+      },
+      "CXCR4": {
+        "usable_sites": 50,
+        "intermediate_sites": 10,
+        "intermediate_fraction": 0.2,
+        "observed_het_fraction": 0.88,
+        "expected_het_fraction": 0.4598,
+        "het_ratio": 1.914
+      },
+      "CYLD": {
+        "usable_sites": 53,
+        "intermediate_sites": 48,
+        "intermediate_fraction": 0.9057,
+        "observed_het_fraction": 1.0,
+        "expected_het_fraction": 0.468,
+        "het_ratio": 2.137
+      },
+      "DDB1": {
+        "usable_sites": 1,
+        "intermediate_sites": 1,
+        "intermediate_fraction": 1.0,
+        "observed_het_fraction": 1.0,
+        "expected_het_fraction": 0.375,
+        "het_ratio": 2.667
+      },
+      "DEFB1": {
+        "usable_sites": 316,
+        "intermediate_sites": 53,
+        "intermediate_fraction": 0.1677,
+        "observed_het_fraction": 0.75,
+        "expected_het_fraction": 0.4693,
+        "het_ratio": 1.598
+      },
+      "DIS3": {
+        "usable_sites": 57,
+        "intermediate_sites": 4,
+        "intermediate_fraction": 0.0702,
+        "observed_het_fraction": 0.3509,
+        "expected_het_fraction": 0.4561,
+        "het_ratio": 0.769
+      },
+      "EGFR": {
+        "usable_sites": 203,
+        "intermediate_sites": 11,
+        "intermediate_fraction": 0.0542,
+        "observed_het_fraction": 0.67,
+        "expected_het_fraction": 0.4752,
+        "het_ratio": 1.41
+      },
+      "EGR1": {
+        "usable_sites": 92,
+        "intermediate_sites": 10,
+        "intermediate_fraction": 0.1087,
+        "observed_het_fraction": 0.8696,
+        "expected_het_fraction": 0.4407,
+        "het_ratio": 1.973
+      },
+      "FBXW7": {
+        "usable_sites": 91,
+        "intermediate_sites": 10,
+        "intermediate_fraction": 0.1099,
+        "observed_het_fraction": 0.2747,
+        "expected_het_fraction": 0.4811,
+        "het_ratio": 0.571
+      },
+      "FCRL5/FCRL4": {
+        "usable_sites": 221,
+        "intermediate_sites": 7,
+        "intermediate_fraction": 0.0317,
+        "observed_het_fraction": 0.6787,
+        "expected_het_fraction": 0.4777,
+        "het_ratio": 1.421
+      },
+      "FGFR3/NSD2": {
+        "usable_sites": 44,
+        "intermediate_sites": 5,
+        "intermediate_fraction": 0.1136,
+        "observed_het_fraction": 0.6364,
+        "expected_het_fraction": 0.4339,
+        "het_ratio": 1.467
+      },
+      "IDH1": {
+        "usable_sites": 23,
+        "intermediate_sites": 4,
+        "intermediate_fraction": 0.1739,
+        "observed_het_fraction": 0.8696,
+        "expected_het_fraction": 0.4268,
+        "het_ratio": 2.038
+      },
+      "IDH2": {
+        "usable_sites": 206,
+        "intermediate_sites": 17,
+        "intermediate_fraction": 0.0825,
+        "observed_het_fraction": 0.5,
+        "expected_het_fraction": 0.4497,
+        "het_ratio": 1.112
+      },
+      "IGL/IGLL5": {
+        "usable_sites": 1454,
+        "intermediate_sites": 154,
+        "intermediate_fraction": 0.1059,
+        "observed_het_fraction": 0.4154,
+        "expected_het_fraction": 0.4585,
+        "het_ratio": 0.906
+      },
+      "IKZF1": {
+        "usable_sites": 103,
+        "intermediate_sites": 2,
+        "intermediate_fraction": 0.0194,
+        "observed_het_fraction": 0.1359,
+        "expected_het_fraction": 0.4608,
+        "het_ratio": 0.295
+      },
+      "IKZF3": {
+        "usable_sites": 107,
+        "intermediate_sites": 6,
+        "intermediate_fraction": 0.0561,
+        "observed_het_fraction": 0.8411,
+        "expected_het_fraction": 0.4406,
+        "het_ratio": 1.909
+      },
+      "IRF4": {
+        "usable_sites": 104,
+        "intermediate_sites": 15,
+        "intermediate_fraction": 0.1442,
+        "observed_het_fraction": 0.3846,
+        "expected_het_fraction": 0.4606,
+        "het_ratio": 0.835
+      },
+      "KMT2B": {
+        "usable_sites": 54,
+        "intermediate_sites": 4,
+        "intermediate_fraction": 0.0741,
+        "observed_het_fraction": 0.0926,
+        "expected_het_fraction": 0.4578,
+        "het_ratio": 0.202
+      },
+      "KMT2C": {
+        "usable_sites": 62,
+        "intermediate_sites": 5,
+        "intermediate_fraction": 0.0806,
+        "observed_het_fraction": 0.5968,
+        "expected_het_fraction": 0.4322,
+        "het_ratio": 1.381
+      },
+      "KRAS": {
+        "usable_sites": 142,
+        "intermediate_sites": 81,
+        "intermediate_fraction": 0.5704,
+        "observed_het_fraction": 0.9014,
+        "expected_het_fraction": 0.446,
+        "het_ratio": 2.021
+      },
+      "LRRK2": {
+        "usable_sites": 205,
+        "intermediate_sites": 85,
+        "intermediate_fraction": 0.4146,
+        "observed_het_fraction": 0.6634,
+        "expected_het_fraction": 0.4573,
+        "het_ratio": 1.451
+      },
+      "MAFA": {
+        "usable_sites": 662,
+        "intermediate_sites": 53,
+        "intermediate_fraction": 0.0801,
+        "observed_het_fraction": 0.435,
+        "expected_het_fraction": 0.4573,
+        "het_ratio": 0.951
+      },
+      "MAFB": {
+        "usable_sites": 589,
+        "intermediate_sites": 50,
+        "intermediate_fraction": 0.0849,
+        "observed_het_fraction": 0.5178,
+        "expected_het_fraction": 0.461,
+        "het_ratio": 1.123
+      },
+      "MAP3K14": {
+        "usable_sites": 41,
+        "intermediate_sites": 3,
+        "intermediate_fraction": 0.0732,
+        "observed_het_fraction": 0.7805,
+        "expected_het_fraction": 0.4854,
+        "het_ratio": 1.608
+      },
+      "MAX": {
+        "usable_sites": 121,
+        "intermediate_sites": 18,
+        "intermediate_fraction": 0.1488,
+        "observed_het_fraction": 0.7769,
+        "expected_het_fraction": 0.4737,
+        "het_ratio": 1.64
+      },
+      "MYC": {
+        "usable_sites": 4418,
+        "intermediate_sites": 252,
+        "intermediate_fraction": 0.057,
+        "observed_het_fraction": 0.3483,
+        "expected_het_fraction": 0.4585,
+        "het_ratio": 0.76
+      },
+      "MYD88": {
+        "usable_sites": 8,
+        "intermediate_sites": 1,
+        "intermediate_fraction": 0.125,
+        "observed_het_fraction": 0.875,
+        "expected_het_fraction": 0.3919,
+        "het_ratio": 2.233
+      },
+      "NFKB1": {
+        "usable_sites": 226,
+        "intermediate_sites": 18,
+        "intermediate_fraction": 0.0796,
+        "observed_het_fraction": 0.8938,
+        "expected_het_fraction": 0.4469,
+        "het_ratio": 2.0
+      },
+      "NR3C1": {
+        "usable_sites": 102,
+        "intermediate_sites": 3,
+        "intermediate_fraction": 0.0294,
+        "observed_het_fraction": 0.4412,
+        "expected_het_fraction": 0.4583,
+        "het_ratio": 0.963
+      },
+      "NRAS": {
+        "usable_sites": 15,
+        "intermediate_sites": 9,
+        "intermediate_fraction": 0.6,
+        "observed_het_fraction": 0.9333,
+        "expected_het_fraction": 0.4724,
+        "het_ratio": 1.976
+      },
+      "PAX5": {
+        "usable_sites": 253,
+        "intermediate_sites": 17,
+        "intermediate_fraction": 0.0672,
+        "observed_het_fraction": 0.6522,
+        "expected_het_fraction": 0.4622,
+        "het_ratio": 1.411
+      },
+      "PIK3CA": {
+        "usable_sites": 138,
+        "intermediate_sites": 1,
+        "intermediate_fraction": 0.0072,
+        "observed_het_fraction": 0.1884,
+        "expected_het_fraction": 0.4368,
+        "het_ratio": 0.431
+      },
+      "PIM1": {
+        "usable_sites": 146,
+        "intermediate_sites": 5,
+        "intermediate_fraction": 0.0342,
+        "observed_het_fraction": 0.7945,
+        "expected_het_fraction": 0.4598,
+        "het_ratio": 1.728
+      },
+      "PRDM1": {
+        "usable_sites": 62,
+        "intermediate_sites": 7,
+        "intermediate_fraction": 0.1129,
+        "observed_het_fraction": 0.7258,
+        "expected_het_fraction": 0.4674,
+        "het_ratio": 1.553
+      },
+      "PRKD2": {
+        "usable_sites": 102,
+        "intermediate_sites": 10,
+        "intermediate_fraction": 0.098,
+        "observed_het_fraction": 0.598,
+        "expected_het_fraction": 0.4583,
+        "het_ratio": 1.305
+      },
+      "PSMB5": {
+        "usable_sites": 37,
+        "intermediate_sites": 1,
+        "intermediate_fraction": 0.027,
+        "observed_het_fraction": 0.5135,
+        "expected_het_fraction": 0.474,
+        "het_ratio": 1.083
+      },
+      "PSMG2": {
+        "usable_sites": 165,
+        "intermediate_sites": 11,
+        "intermediate_fraction": 0.0667,
+        "observed_het_fraction": 0.7697,
+        "expected_het_fraction": 0.4584,
+        "het_ratio": 1.679
+      },
+      "RB1": {
+        "usable_sites": 49,
+        "intermediate_sites": 0,
+        "intermediate_fraction": 0.0,
+        "observed_het_fraction": 0.102,
+        "expected_het_fraction": 0.4648,
+        "het_ratio": 0.22
+      },
+      "RFTN1": {
+        "usable_sites": 260,
+        "intermediate_sites": 14,
+        "intermediate_fraction": 0.0538,
+        "observed_het_fraction": 0.3654,
+        "expected_het_fraction": 0.4703,
+        "het_ratio": 0.777
+      },
+      "SETD2": {
+        "usable_sites": 135,
+        "intermediate_sites": 13,
+        "intermediate_fraction": 0.0963,
+        "observed_het_fraction": 0.4963,
+        "expected_het_fraction": 0.4787,
+        "het_ratio": 1.037
+      },
+      "SP140": {
+        "usable_sites": 167,
+        "intermediate_sites": 40,
+        "intermediate_fraction": 0.2395,
+        "observed_het_fraction": 0.6766,
+        "expected_het_fraction": 0.464,
+        "het_ratio": 1.458
+      },
+      "STAT3": {
+        "usable_sites": 135,
+        "intermediate_sites": 9,
+        "intermediate_fraction": 0.0667,
+        "observed_het_fraction": 0.8222,
+        "expected_het_fraction": 0.4811,
+        "het_ratio": 1.709
+      },
+      "TENT5C": {
+        "usable_sites": 89,
+        "intermediate_sites": 41,
+        "intermediate_fraction": 0.4607,
+        "observed_het_fraction": 0.764,
+        "expected_het_fraction": 0.4528,
+        "het_ratio": 1.687
+      },
+      "TET2": {
+        "usable_sites": 121,
+        "intermediate_sites": 23,
+        "intermediate_fraction": 0.1901,
+        "observed_het_fraction": 0.6777,
+        "expected_het_fraction": 0.4729,
+        "het_ratio": 1.433
+      },
+      "TNFAIP8": {
+        "usable_sites": 97,
+        "intermediate_sites": 14,
+        "intermediate_fraction": 0.1443,
+        "observed_het_fraction": 0.7629,
+        "expected_het_fraction": 0.4592,
+        "het_ratio": 1.662
+      },
+      "TP53+TNFSF12": {
+        "usable_sites": 656,
+        "intermediate_sites": 53,
+        "intermediate_fraction": 0.0808,
+        "observed_het_fraction": 0.3902,
+        "expected_het_fraction": 0.4548,
+        "het_ratio": 0.858
+      },
+      "TRAF2": {
+        "usable_sites": 51,
+        "intermediate_sites": 3,
+        "intermediate_fraction": 0.0588,
+        "observed_het_fraction": 0.7059,
+        "expected_het_fraction": 0.4585,
+        "het_ratio": 1.54
+      },
+      "TRAF3": {
+        "usable_sites": 66,
+        "intermediate_sites": 16,
+        "intermediate_fraction": 0.2424,
+        "observed_het_fraction": 0.5606,
+        "expected_het_fraction": 0.4483,
+        "het_ratio": 1.25
+      },
+      "TXNDC5": {
+        "usable_sites": 142,
+        "intermediate_sites": 28,
+        "intermediate_fraction": 0.1972,
+        "observed_het_fraction": 0.5563,
+        "expected_het_fraction": 0.4765,
+        "het_ratio": 1.167
+      },
+      "UBR5": {
+        "usable_sites": 57,
+        "intermediate_sites": 0,
+        "intermediate_fraction": 0.0,
+        "observed_het_fraction": 0.0351,
+        "expected_het_fraction": 0.4547,
+        "het_ratio": 0.077
+      },
+      "UST": {
+        "usable_sites": 461,
+        "intermediate_sites": 52,
+        "intermediate_fraction": 0.1128,
+        "observed_het_fraction": 0.5249,
+        "expected_het_fraction": 0.46,
+        "het_ratio": 1.141
+      },
+      "WWOX/MAF": {
+        "usable_sites": 3688,
+        "intermediate_sites": 1466,
+        "intermediate_fraction": 0.3975,
+        "observed_het_fraction": 0.4921,
+        "expected_het_fraction": 0.4607,
+        "het_ratio": 1.068
+      },
+      "XBP1": {
+        "usable_sites": 61,
+        "intermediate_sites": 9,
+        "intermediate_fraction": 0.1475,
+        "observed_het_fraction": 0.7705,
+        "expected_het_fraction": 0.4673,
+        "het_ratio": 1.649
+      },
+      "ZNF292": {
+        "usable_sites": 304,
+        "intermediate_sites": 7,
+        "intermediate_fraction": 0.023,
+        "observed_het_fraction": 0.0461,
+        "expected_het_fraction": 0.4678,
+        "het_ratio": 0.098
+      }
+    }
+  },
+  "comparison_sample": "11F202615394"
+}
