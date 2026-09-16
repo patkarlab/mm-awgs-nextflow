@@ -30,6 +30,17 @@ process SURVIVOR_MERGE {
         cp ${savana_vcf} savana.vcf
     fi
 
+    # collapse_bnd_mates_v1. Severus and SAVANA write both mates of each
+    # breakend; Sniffles and CuteSV write one record per junction. Collapse
+    # every caller to one record per junction, keeping the mate on the
+    # canonical-first end, so a junction enters the merge once per caller
+    # and SUPP_VEC cannot be split across its two mates. No-op on a file
+    # without MATEIDs. The published caller VCFs are not changed.
+    for c in sniffles cutesv severus savana; do
+        collapse_bnd_mates.py \${c}.vcf --output \${c}.collapsed.vcf
+        mv \${c}.collapsed.vcf \${c}.vcf
+    done
+
     # The caller order written to vcflist.txt is the order SURVIVOR uses for
     # SUPP_VEC bits. We MUST keep this exact order — downstream MM annotation
     # decodes 1000/0100/0010/0001 as sniffles/cutesv/severus/savana
