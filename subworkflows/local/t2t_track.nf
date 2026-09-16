@@ -25,6 +25,7 @@ include { AUGMENT_SV_SUPPORT   } from '../../modules/local/augment_sv_support'
 include { MERGE_TRANSLOCATIONS } from '../../modules/local/merge_translocations'
 include { QC_ONTARGET          } from '../../modules/local/qc_ontarget'
 include { SAVANA               } from '../../modules/local/savana'
+include { NANOMONSV            } from '../../modules/local/nanomonsv'   // nanomonsv_confirmation_v1
 
 workflow T2T_TRACK {
 
@@ -61,6 +62,16 @@ workflow T2T_TRACK {
         SEVERUS(t2t_bam_bai)
         SAVANA(t2t_bam_bai)
 
+        // Confirmation layer, not a fifth vote: nanomonsv runs beside the
+        // ensemble and its junctions are matched onto the annotated table
+        // downstream. It never enters the SURVIVOR merge, so SUPP_VEC and
+        // the callers column keep their meaning.
+        nanomonsv_ch = Channel.empty()
+        if (!params.skip_nanomonsv) {
+            NANOMONSV(t2t_bam_bai)
+            nanomonsv_ch = NANOMONSV.out.result
+        }
+
         // Combine per-sample VCFs for merging
         per_sample_for_merge = SNIFFLES.out.vcf
             .join(CUTESV.out.vcf,      by: 0)
@@ -79,13 +90,22 @@ workflow T2T_TRACK {
             // then unite near-identical translocation calls. Join on meta;
             // drop the .tbi from Sniffles/CuteSV (augmenter needs the .vcf);
             // Severus is already a plain .vcf.
+            // The nanomonsv result is joined with remainder: true on meta.id,
+            // so a sample nanomonsv fails on (or a run with it skipped)
+            // still gets its annotated table, with the confirmation columns
+            // blank. A plain join would drop the sample silently.
             ch_augment_in = ANNOTATE_MM_TRANSLOCATIONS.out.tsv
                 .join(SNIFFLES.out.vcf, by: 0)
                 .join(CUTESV.out.vcf,   by: 0)
                 .join(SEVERUS.out.vcf,  by: 0)
                 .join(SAVANA.out.vcf,   by: 0)
                 .map { meta, annotated, sn_vcf, sn_tbi, cu_vcf, cu_tbi, sv_vcf, sa_vcf ->
-                    tuple(meta, annotated, sn_vcf, cu_vcf, sv_vcf, sa_vcf)
+                    tuple(meta.id, meta, annotated, sn_vcf, cu_vcf, sv_vcf, sa_vcf)
+                }
+                .join(nanomonsv_ch.map { meta, res -> tuple(meta.id, res) }, remainder: true)
+                .filter { it[1] != null }
+                .map { _id, meta, annotated, sn_vcf, cu_vcf, sv_vcf, sa_vcf, nano ->
+                    tuple(meta, annotated, sn_vcf, cu_vcf, sv_vcf, sa_vcf, nano ?: [])
                 }
 
             AUGMENT_SV_SUPPORT(ch_augment_in)
@@ -106,6 +126,7 @@ workflow T2T_TRACK {
     savana_somatic_vcf = params.skip_sv_calling   ? Channel.empty() : SAVANA.out.somatic_vcf
     savana_outdir    = params.skip_sv_calling     ? Channel.empty() : SAVANA.out.outdir
     merged_vcf       = params.skip_sv_calling     ? Channel.empty() : SURVIVOR_MERGE.out.merged_vcf
+    nanomonsv_result = (params.skip_sv_calling || params.skip_nanomonsv) ? Channel.empty() : NANOMONSV.out.result
     mm_annotated_tsv = (params.skip_sv_calling || params.skip_mm_annotation) ? Channel.empty() : AUGMENT_SV_SUPPORT.out.annotated
     translocations   = (params.skip_sv_calling || params.skip_mm_annotation) ? Channel.empty() : MERGE_TRANSLOCATIONS.out.translocations
 }

@@ -180,6 +180,12 @@ def merge_cluster(members):
     sup_snf = _max_col("support_sniffles")
     sup_cut = _max_col("support_cutesv")
     sup_sev = _max_col("support_severus")
+    # nanomonsv_confirmation_v1: confirmed if any member is; the cluster
+    # maximum for support, matching the other support_* columns.
+    sup_nano = _max_col("support_nanomonsv")
+    nano_values = [(m.get("nanomonsv_confirmed") or "").strip() for m in members]
+    nano_confirmed = ("yes" if "yes" in nano_values
+                      else ("no" if "no" in nano_values else ""))
 
     filt = "PASS" if any((m.get("filter") or "").strip() == "PASS" for m in members) \
         else (rep.get("filter") or "")
@@ -220,6 +226,8 @@ def merge_cluster(members):
         "support_sniffles": sup_snf,
         "support_cutesv": sup_cut,
         "support_severus": sup_sev,
+        "support_nanomonsv": sup_nano,
+        "nanomonsv_confirmed": nano_confirmed,
         "n_merged": str(len(members)),
         "merged_sv_ids": ",".join(m.get("sv_id", "") for m in members),
     })

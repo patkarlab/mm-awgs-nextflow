@@ -145,6 +145,33 @@ def load_caller(path, value_kind):
     return out
 
 
+def load_nanomonsv(path):
+    """nanomonsv_confirmation_v1: (canon ends, supporting reads, Is_Filter)
+    for every row of a nanomonsv result.txt. Columns are read by header
+    name; Dir_1/Dir_2 are not used because the ensemble match is
+    orientation-agnostic. Filtered rows are kept so a junction nanomonsv
+    saw and rejected can be told apart from one it never reported."""
+    out = []
+    if not path or not os.path.isfile(path):
+        return out
+    with open_any(path) as fh:
+        reader = csv.DictReader(fh, delimiter="\t")
+        for row in reader:
+            try:
+                c1, p1 = row["Chr_1"], int(row["Pos_1"])
+                c2, p2 = row["Chr_2"], int(row["Pos_2"])
+            except (KeyError, TypeError, ValueError):
+                continue
+            sup = row.get("Supporting_Read_Num_Tumor", "")
+            sup = int(sup) if str(sup).isdigit() else None
+            if sup is None:
+                continue
+            filt = (row.get("Is_Filter") or "").strip() or "PASS"
+            ca, pa, cb, pb = canon(c1, p1, c2, p2)
+            out.append((ca, pa, cb, pb, sup, filt))
+    return out
+
+
 def best_match(ca, pa, cb, pb, records, tol):
     """Support of the NEAREST caller record whose BOTH ends fall within tol bp
     (sum of per-end distances minimised). Nearest, not max, so that in dense
@@ -175,15 +202,26 @@ def main():
                          "on this data)")
     ap.add_argument("--output", required=True)
     ap.add_argument("--tol", type=int, default=25, help="bp tolerance per breakpoint (default 25).")
+    # nanomonsv_confirmation_v1
+    ap.add_argument("--nanomonsv", default=None,
+                    help="nanomonsv result.txt; adds support_nanomonsv, "
+                         "filter_nanomonsv and nanomonsv_confirmed. Read beside "
+                         "the ensemble, never folded into support_reads.")
+    ap.add_argument("--nanomonsv-tol", type=int, default=100,
+                    help="bp tolerance per breakend for the confirmation match "
+                         "(default 100; SURVIVOR shifts positions, nanomonsv does not).")
     args = ap.parse_args()
 
     snf = load_caller(args.sniffles, "SUPPORT")
     cut = load_caller(args.cutesv, "RE")
     sev = load_caller(args.severus, "DV")
     sav = load_caller(args.savana, "TUMOUR_READ_SUPPORT")
+    nano = load_nanomonsv(args.nanomonsv)
+    nano_run = bool(args.nanomonsv)
     sys.stderr.write(
         f"loaded support records: sniffles={len(snf)} cutesv={len(cut)} "
-        f"severus={len(sev)} savana={len(sav)}\n")
+        f"severus={len(sev)} savana={len(sav)} nanomonsv={len(nano)}"
+        f"{'' if nano_run else ' (not run)'}\n")
 
     with open(args.annotated, newline="") as fh:
         reader = csv.DictReader(fh, delimiter="\t")
@@ -196,7 +234,8 @@ def main():
                 "support_savana",
                 "filter_sniffles", "filter_cutesv", "filter_severus",
                 "filter_savana",
-                "filter_worst"]
+                "filter_worst",
+                "support_nanomonsv", "filter_nanomonsv", "nanomonsv_confirmed"]
     out_cols = in_cols + [c for c in new_cols if c not in in_cols]
 
     n_pop = 0
@@ -242,6 +281,18 @@ def main():
         seen = [f for f in (sf, cf, vf) if f]
         nonpass = sorted({f for f in seen if f != "PASS"})
         r["filter_worst"] = ";".join(nonpass) if nonpass else ("PASS" if seen else "")
+        # nanomonsv_confirmation_v1. Not gated on the callers column: the
+        # point is an independent method seeing the same junction. 'yes'
+        # needs a PASS nanomonsv junction within tolerance on both ends;
+        # a filtered nanomonsv hit is 'no' with its filter recorded; blank
+        # means nanomonsv did not run for this sample.
+        if nano_run:
+            ns, nf = best_match(ca, pa, cb, pb, nano, args.nanomonsv_tol)
+            r["support_nanomonsv"] = str(ns) if ns is not None else ""
+            r["filter_nanomonsv"] = nf or ""
+            r["nanomonsv_confirmed"] = "yes" if (ns is not None and nf == "PASS") else "no"
+        else:
+            r["support_nanomonsv"] = r["filter_nanomonsv"] = r["nanomonsv_confirmed"] = ""
 
     with open(args.output, "w", newline="") as out:
         w = csv.DictWriter(out, fieldnames=out_cols, delimiter="\t",

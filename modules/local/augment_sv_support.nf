@@ -12,7 +12,8 @@ process AUGMENT_SV_SUPPORT {
           path(sniffles_vcf),
           path(cutesv_vcf),
           path(severus_vcf),
-          path(savana_vcf)
+          path(savana_vcf),
+          path(nanomonsv_result)   // nanomonsv_confirmation_v1; [] when absent
 
     output:
     tuple val(meta), path("${meta.id}.mm_annotated.tsv"), emit: annotated
@@ -22,6 +23,7 @@ process AUGMENT_SV_SUPPORT {
     task.ext.when == null || task.ext.when
 
     script:
+    def nano_arg = nanomonsv_result ? "--nanomonsv ${nanomonsv_result} --nanomonsv-tol ${params.nanomonsv_tol}" : ''
     """
     augment_sv_support.py \\
         --annotated annotated_in.tsv \\
@@ -30,7 +32,8 @@ process AUGMENT_SV_SUPPORT {
         --severus   ${severus_vcf} \\
         --savana    ${savana_vcf} \\
         --output    ${meta.id}.mm_annotated.tsv \\
-        --tol       ${params.support_tol}
+        --tol       ${params.support_tol} \\
+        ${nano_arg}
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
