@@ -235,11 +235,28 @@ def merge_cluster(members):
     # the representative alone, on the same reasoning as known_mm_pair: a
     # cluster member that resolved to a named gene may not be the one with
     # the most support.
-    for col in ("entity", "tier", "match_quality", "anchor", "anchor_class",
-                "band_a", "band_b"):
+    for col in ("entity", "tier", "match_quality", "anchor", "anchor_class"):
         v = first_nonempty(members, col)
         if v:
             merged[col] = v
+    # Per-side columns must follow the canonical A/B of the merged row, not
+    # the orientation of whichever member happened to carry them: a
+    # reciprocal mate has its ends swapped relative to canonical_ends, and
+    # taking its band_a for the merged row's A labelled IGK on chr2 as
+    # 10q25.1. Each member is oriented against end1 before its side columns
+    # are read. (band_orientation_v1)
+    for base in ("band", "ig_region"):
+        val_a = val_b = ""
+        for m in members:
+            same = (m.get("chrom_a") == end1[0]
+                    and abs(to_int(m.get("pos_a"), 0) - end1[1])
+                    <= abs(to_int(m.get("pos_b"), 0) - end1[1]))
+            ma = m.get(base + "_a", "") if same else m.get(base + "_b", "")
+            mb = m.get(base + "_b", "") if same else m.get(base + "_a", "")
+            val_a = val_a or (ma or "").strip()
+            val_b = val_b or (mb or "").strip()
+        merged[base + "_a"] = val_a
+        merged[base + "_b"] = val_b
     if any((m.get("reportable") or "") == "yes" for m in members):
         merged["reportable"] = "yes"
     return merged

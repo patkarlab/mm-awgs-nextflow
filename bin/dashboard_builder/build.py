@@ -26,6 +26,7 @@ The injection is delimited by HTML comment sentinels and can be re-run safely.
 """
 
 import argparse
+import json
 import logging
 import re
 import shutil
@@ -53,6 +54,8 @@ from parsers import translocations as p_translocations
 from parsers import ichor as p_ichor
 from parsers import copy_number as p_copy_number
 from parsers import qc as p_qc
+from parsers import rearrangements as p_rearrangements   # dashboard_mm_v1
+from parsers import allelic as p_allelic                 # dashboard_mm_v1
 
 
 BUILDER_VERSION = "0.5.0-triage+exon"
@@ -430,14 +433,86 @@ def collect_sample_context(sample_dir, build_time, subdir="",
     # Each parser returns None when its inputs are absent, and the
     # matching template renders an empty state rather than failing.
     ctx["translocations"] = p_translocations.parse(effective_dir, sample)
+    # dashboard_mm_v1: grouped rearrangements (event group > partner locus >
+    # breakend) from the merged translocations.tsv.
+    ctx["rearrangements"] = p_rearrangements.parse(effective_dir, sample)
     ctx["ichor"] = p_ichor.parse(effective_dir, sample)
     # Allele-specific copy number from the T2T track. Separate from ichor:
     # that is a tumour-fraction estimator emitting copy number against hg38,
     # this is segmented allele-specific copy number against T2T with a clonal
     # cell fraction per segment and an explicit detection limit.
     ctx["copy_number"] = p_copy_number.parse(effective_dir, sample)
+    # dashboard_mm_v1: genebaf allelic state joined to ichorCNA copy number
+    # per panel window, for the per-chromosome tables on the copy-number tab.
+    ctx["allelic"] = p_allelic.parse(
+        effective_dir, sample,
+        (ctx["copy_number"] or {}).get("genes") or [])
     ctx["qc"] = p_qc.parse(effective_dir, sample)
+    ctx["fingerprint"] = _load_fingerprint(effective_dir, sample)
+    ctx["cohort_row"] = _cohort_row(ctx)
     return ctx
+
+
+def _load_fingerprint(effective_dir, sample):
+    """mmfingerprint.py output, if the bundle carries it (qc/<sample>.fingerprint.json)."""
+    for cand in (effective_dir / "qc" / f"{sample}.fingerprint.json",
+                 effective_dir / f"{sample}.fingerprint.json"):
+        if cand.is_file():
+            try:
+                with open(cand) as fh:
+                    d = json.load(fh)
+                p = d.get("primary") or {}
+                return {"found": True,
+                        "sex_from_depth": p.get("sex_from_depth"),
+                        "intermediate_fraction": (p.get("autosomal") or {}).get("intermediate_fraction"),
+                        "verdict": d.get("verdict") or "",
+                        "path": str(cand.relative_to(effective_dir))}
+            except (OSError, ValueError):
+                return {"found": False}
+    return {"found": False}
+
+
+def _cohort_row(ctx):
+    """One-line summary per sample for the cohort index (dashboard_mm_v1)."""
+    cn = ctx.get("copy_number") or {}
+    head = cn.get("headline") or {}
+    arms = {a["arm"]: a for a in (cn.get("arms") or [])}
+    def arm_event(label):
+        a = arms.get(label) or {}
+        ev = a.get("event") or ""
+        if ev in ("", "none"):
+            return ""
+        cf = a.get("cell_fraction")
+        cn_ = a.get("copy_number")
+        return "%s x%s%s" % (ev, cn_, (" (%d%%)" % round(cf * 100)) if cf else "")
+    rx = ctx.get("rearrangements") or {}
+    summ = rx.get("summary") or {}
+    defining = []
+    for g in rx.get("reportable") or []:
+        for l in g.get("loci") or []:
+            if l.get("tier", "").startswith("defining"):
+                defining.append({"name": l.get("known_pair") or "", "nano": l.get("nano")})
+    myc = any((g.get("anchor") == "MYC") for g in rx.get("reportable") or [])
+    qc = ctx.get("qc") or {}
+    depth = ((qc.get("depth") or {}).get("median")) if isinstance(qc, dict) else None
+    fp = ctx.get("fingerprint") or {}
+    return {
+        "purity": head.get("purity"),
+        "purity_source": head.get("purity_source"),
+        "depth": depth,
+        "ploidy_class": head.get("ploidy_class") or "",
+        "trisomies": head.get("canonical_trisomies") or [],
+        "defining": defining,
+        "myc_reportable": myc,
+        "n_confirmed": summ.get("n_confirmed"),
+        "arm_17p": arm_event("17p"),
+        "arm_1q": arm_event("1q"),
+        "arm_13q": arm_event("13q"),
+        "arm_1p": arm_event("1p"),
+        "n_clinical": (ctx.get("clinical") or {}).get("n") if ctx.get("clinical") else None,
+        "identity": fp.get("sex_from_depth") if fp.get("found") else "",
+        "identity_flag": (fp.get("found") and (fp.get("intermediate_fraction") or 0) > 0.2),
+    }
 
 
 def copy_assets(builder_dir, run_dir):

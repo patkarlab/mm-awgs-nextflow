@@ -52,7 +52,7 @@
 
     <div class="d-flex align-items-baseline justify-content-between mt-3 mb-2">
       <div>
-        <h5 class="mb-0">Copy number</h5>
+        <h5 class="mb-0">Copy number &amp; allelic state</h5>
         <small class="text-muted">
           ichorCNA depth from off-target reads against GRCh38
           {% if cn.headline.baseline_cn is not none %}
@@ -204,13 +204,82 @@
                   data-cn-chr="{{ page.chrom }}">{{ page.label }}</button>
         {% endfor %}
       </nav>
+      {% set al = ctx.allelic if ctx.allelic is defined else none %}
       {% for page in cn.chromosomes %}
         <div class="row g-3 cn-chr-page" data-cn-page="{{ page.chrom }}"
              {% if not loop.first %}style="display:none"{% endif %}>
           {{ macros.render_cnv_plot_card('copy_number::' ~ page.chrom,
                page.chrom, page.src, 'col-12') }}
+          {# ---- panel windows on this chromosome: depth, copy number, allelic state (allelic_tab_v1) ---- #}
+          {% set ch = (al.chromosomes.get(page.chrom) if (al and al.found) else none) %}
+          <div class="col-12">
+            {% if ch and ch.windows %}
+              <table class="table table-sm small align-middle mb-1">
+                <thead><tr>
+                  <th>Panel window</th><th>Band</th><th class="text-end">Size</th>
+                  <th class="text-end" title="median log2 of on-target 1 kb bins vs the sample's diploid level">Depth log2 (on-target)</th>
+                  <th title="ichorCNA state at the window, off-target reads">Copy number</th>
+                  <th title="cell fraction from flow purity">Cell fraction</th>
+                  <th>Allelic state</th><th class="text-end">Hets / usable</th><th>Reading</th>
+                </tr></thead>
+                <tbody>
+                {% for w in ch.windows %}
+                  <tr class="{{ 'table-warning' if w.reading in ('deletion','copy-neutral LOH','gain (allelic)') else '' }}{% if w.svg %} cn-win-row{% endif %}"
+                      {% if w.svg %}data-cn-win="{{ page.chrom }}-{{ loop.index }}" style="cursor:pointer" title="click for the depth and allele-fraction plot"{% endif %}>
+                    <td><strong>{{ w.gene }}</strong>{% if w.svg %} <span class="text-muted small">&#9656; plot</span>{% endif %}</td>
+                    <td class="text-muted">{{ w.band }}</td>
+                    <td class="text-end text-muted">{{ '%.0f kb'|format(w.size_kb) if w.size_kb < 1000 else '%.2f Mb'|format(w.size_kb/1000) }}</td>
+                    <td class="text-end">{{ '%.2f'|format(w.log2_ontarget) if w.log2_ontarget is not none else '' }}</td>
+                    <td>{{ w.cn if w.cn is not none else '' }}
+                      {% if w.cn_event and w.cn_event != 'none' %}<span class="badge bg-{{ 'danger' if w.cn_event == 'loss' else 'success' }} ms-1">{{ w.cn_event }}</span>{% endif %}</td>
+                    <td>{{ '%.0f%%'|format(w.cell_fraction*100) if w.cell_fraction is not none else '' }}</td>
+                    <td>
+                      {% if w.allelic_state == 'balanced' %}<span class="badge bg-success">balanced</span>
+                      {% elif w.allelic_state == 'imbalanced' %}<span class="badge bg-danger">imbalanced</span>
+                      {% elif w.allelic_state == 'insufficient' %}<span class="badge bg-secondary">insufficient</span>
+                      {% else %}<span class="text-muted">not assessed{% if w.baf_scope == 'excluded_ig' %} (Ig locus){% endif %}</span>{% endif %}
+                    </td>
+                    <td class="text-end text-muted">{% if w.n_usable %}{{ w.n_het }} / {{ w.n_usable }}{% endif %}</td>
+                    <td>{{ w.reading }}</td>
+                  </tr>
+                  {% if w.svg %}
+                    <tr class="cn-win-plot" data-cn-win-plot="{{ page.chrom }}-{{ loop.index }}" style="display:none">
+                      <td colspan="9" class="bg-white">{{ w.svg | safe }}
+                        <div class="small text-muted">Red points: allele fractions away from 0 and 1 (heterozygous or imbalanced sites); grey: near-homozygous. A diploid balanced window puts the red band at 0.5; a deletion or copy-neutral LOH splits it; a gain shifts it to one side.</div>
+                      </td>
+                    </tr>
+                  {% endif %}
+                {% endfor %}
+                </tbody>
+              </table>
+              {% if ch.arms %}
+                <div class="small text-muted mb-2">
+                  {% for a in ch.arms %}
+                    <span class="me-3"><strong>{{ a.arm }} arm test:</strong>
+                      {% if a.verdict.startswith('not_assessed') %}not run &mdash; only {{ a.genes }} is assessed on this arm ({{ '%.1f'|format(((a.span_end or 0) - (a.span_start or 0)) / 1e6) }} of {{ '%.1f'|format((a.arm_bp or 0) / 1e6) }} Mb); read that window's own allelic state above
+                      {% else %}{{ a.verdict | replace('_', ' ') }}{% if a.p_value is not none %} (p {{ '%.2g'|format(a.p_value) }}){% endif %}
+                      &middot; {{ a.n_windows }} windows ({{ a.genes }}) covering {{ '%.1f%%'|format((a.covered_fraction or 0)*100) }} of the arm across {{ '%.0f%%'|format((a.span_fraction or 0)*100) }} of its length{% endif %}
+                    </span>
+                  {% endfor %}
+                </div>
+              {% endif %}
+            {% elif al and al.found %}
+              <div class="small text-muted mb-2">No panel windows on this chromosome.</div>
+            {% else %}
+              <div class="small text-muted mb-2">Allelic-state output (genebaf) not present in this bundle.</div>
+            {% endif %}
+          </div>
         </div>
       {% endfor %}
+      {% if al and al.found %}
+        <details class="mb-2">
+          <summary class="small">How to read the window table</summary>
+          <div class="small text-muted mt-1" style="max-width:1100px">
+            {% for head, text in al.reading %}<p class="mb-1"><strong>{{ head }}.</strong> {{ text }}</p>{% endfor %}
+            <p class="mb-1">Allelic state is measured at {{ al.n_assessed }} of {{ al.n_windows }} windows{% if al.scope.assessed_windows %}: {{ al.scope.assessed_windows | join(', ') }}{% endif %}.</p>
+          </div>
+        </details>
+      {% endif %}
     {% endif %}
 
     {% if cn.figures.grid %}
@@ -224,8 +293,9 @@
     {% endif %}
 
     {% if cn.cytobands %}
-      <h6 class="mt-4">Altered cytobands</h6>
-      <div class="small text-muted mb-2">
+      <details class="mt-3 mb-3">
+      <summary class="small text-muted">Altered cytobands ({{ cn.cytobands | length }}) — the vocabulary of the cytogenetics report</summary>
+      <div class="small text-muted mb-2 mt-2">
         Copy number by band, in the vocabulary the cytogenetics report uses.
         Cell fraction is comparable to the percentage of nuclei scored positive
         by interphase FISH. It is blank where a single-copy change on a diploid
@@ -268,6 +338,18 @@
           </tbody>
         </table>
       </div>
+      </details>
+    {% endif %}
+
+    {% if ctx.ichor_sol_pages %}
+      <details class="mt-3">
+        <summary class="small text-muted">ichorCNA fit ({{ ctx.ichor_sol_pages | length }} solution page{{ '' if ctx.ichor_sol_pages | length == 1 else 's' }}; cellularity from flow, ploidy pinned at 2, so one solution)</summary>
+        <div class="row g-3 mt-1">
+          {% for pg in ctx.ichor_sol_pages %}
+            {{ macros.render_cnv_plot_card('ichor::' ~ pg.name, pg.label, pg.path, 'col-12') }}
+          {% endfor %}
+        </div>
+      </details>
     {% endif %}
 
     {% if cn.arms %}
@@ -321,6 +403,13 @@
      cannot collide with the shared vb-cnv- include machinery. #}
   <script>
   (function () {
+    document.addEventListener("click", function (event) {
+      var row = event.target.closest ? event.target.closest(".cn-win-row") : null;
+      if (!row) { return; }
+      var id = row.getAttribute("data-cn-win");
+      var plot = document.querySelector('.cn-win-plot[data-cn-win-plot="' + id + '"]');
+      if (plot) { plot.style.display = plot.style.display === "none" ? "" : "none"; }
+    });
     var pager = document.getElementById("cn-chr-pager");
     if (pager) {
       pager.addEventListener("click", function (event) {

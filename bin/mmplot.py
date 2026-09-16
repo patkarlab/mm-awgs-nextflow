@@ -439,10 +439,20 @@ def draw_panels(axes, chrom, length, bins, windows, segments, purity, ploidy,
     if ax_targets is not None:
         from matplotlib import patches
         style_track(ax_targets)
-        for start, end, name, _extra in (targets or {}).get(chrom, []):
+        # target_labels_v1: on a single-chromosome page the panel window
+        # name is written under its block, staggered on two rows so
+        # neighbours (IKZF3, STAT3, MAP3K14 on 17q) do not overprint.
+        # The genome view has no room and stays unlabelled.
+        window_list = sorted((targets or {}).get(chrom, []), key=lambda w: w[0])
+        for k, (start, end, name, _extra) in enumerate(window_list):
             ax_targets.add_patch(patches.Rectangle(
                 (start / scale, 0.30), max((end - start) / scale, limit * 0.0015),
                 0.42, facecolor="#1F3B73", edgecolor="none", zorder=2))
+            if label_bands and name:
+                ax_targets.text((start + end) / 2.0 / scale,
+                                0.18 if k % 2 == 0 else -0.16,
+                                name, ha="center", va="top", fontsize=6.5,
+                                color="#1F3B73", clip_on=False, zorder=3)
         ax_targets.tick_params(labelbottom=False)
 
     # --- cytogram ---

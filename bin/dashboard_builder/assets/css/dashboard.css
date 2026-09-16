@@ -11,12 +11,16 @@ body { background: #fff; }
 /* Left vertical nav-pills sidebar */
 .tspipe-sidebar {
   width: var(--tspipe-sidebar-width);
-  min-height: 100vh;
   background: var(--tspipe-muted-bg);
   border-right: 1px solid #dee2e6;
   padding: 1rem 0.75rem;
+  /* sticky_nav_v1: a flex child stretched to the container's full height has
+     nowhere to stick. Pin its own height to the viewport and let it scroll. */
   position: sticky;
   top: 0;
+  align-self: flex-start;
+  height: 100vh;
+  overflow-y: auto;
 }
 .tspipe-sidebar .nav-link { color: #343a40; }
 .tspipe-sidebar .nav-link.active { background-color: #0d6efd; color: #fff; }
@@ -128,6 +132,7 @@ table.dataTable tr.verdict-reject td { color: #adb5bd; font-style: italic; }
 
 /* Detail view */
 .vb-card-detail dl { margin-bottom: 0; }
+.vb-card-detail dd, .vb-card-detail code { overflow-wrap: anywhere; word-break: break-word; }
 .vb-card-detail dt { font-weight: 400; }
 .vb-card-detail h6 { letter-spacing: 0.04em; }
 

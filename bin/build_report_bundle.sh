@@ -225,6 +225,16 @@ for s in "${SAMPLES[@]}"; do
   copy_all   "$d/copy_number" "$s" -path '*hg38/copy_number*' -name '*.png'
   copy_first "$d/copy_number" "${s}.ichorkaryo.json"  "$s" -path '*hg38/copy_number*' -name '*.ichorkaryo.json'
 
+  # dashboard_mm_v1: allelic state at the panel windows (genebaf) and, when
+  # it has been run, the sample-identity fingerprint. Both feed the
+  # copy-number tab and the cohort index.
+  copy_all   "$d/allelic" "$s" -path '*hg38/allelic*' -name "${s}.genebaf.tsv"
+  copy_all   "$d/allelic" "$s" -path '*hg38/allelic*' -name "${s}.armloh.tsv"
+  copy_all   "$d/allelic" "$s" -path '*hg38/allelic*' -name "${s}.genebaf.json"
+  copy_all   "$d/allelic" "$s" -path '*hg38/allelic*' -name "${s}.genebaf.bins.tsv"
+  copy_all   "$d/allelic" "$s" -path '*hg38/allelic*' -name "${s}.genebaf.sites.tsv"
+  copy_first "$d/qc" "${s}.fingerprint.json" "$s" -name "${s}.fingerprint.json"
+
   # IGV: breakpoint pages, the somatic page, and the manifest that maps
   # events to pages. Directory structure is flattened per evidence class so
   # the dashboard's relative hrefs stay short.
