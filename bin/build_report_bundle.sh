@@ -365,6 +365,44 @@ if [[ -z "${BUNDLE_NO_BAMS:-}" ]]; then
   fi
 fi
 
+# ---------------------------------------------------------------------------
+# Completeness (bundle_guard_v1).
+#
+# Every collector above reports a missing source as a warning and moves on,
+# which is right for optional material but let a bundle with 7 of 15
+# samples lacking variant tables build, zip and ship as if complete. With
+# BUNDLE_STRICT=1 the assembled tree is audited against what this run must
+# contain and the script fails on any gap. BUNDLE_REQUIRE lists the kinds
+# to audit (default snv,sv): snv = both aliased variant tables, sv = both
+# translocation tables, baf = the cohort screen table.
+if [[ "${BUNDLE_STRICT:-0}" == "1" ]]; then
+  require=",${BUNDLE_REQUIRE:-snv,sv},"
+  gaps=()
+  for s in "${SAMPLES[@]}"; do
+    if [[ "$require" == *,snv,* ]]; then
+      for f in "${s}_somaticseq_clinical_final.tsv" "${s}_somaticseq_filtered.tsv"; do
+        [[ -s "$BUNDLE/$s/snv/$f" ]] || gaps+=("$s:snv/$f")
+      done
+    fi
+    if [[ "$require" == *,sv,* ]]; then
+      for f in "${s}.mm_annotated.tsv" "${s}.translocations.tsv"; do
+        [[ -f "$BUNDLE/$s/translocations/$f" ]] || gaps+=("$s:translocations/$f")
+      done
+    fi
+  done
+  if [[ "$require" == *,baf,* ]]; then
+    [[ -s "$BUNDLE/baf_loh/cohort.baf_screen.tsv" ]] || gaps+=("cohort:baf_loh/cohort.baf_screen.tsv")
+  fi
+  if [[ ${#gaps[@]} -gt 0 ]]; then
+    echo "" >&2
+    echo "ERROR: bundle is incomplete (BUNDLE_STRICT=1). Missing:" >&2
+    printf '  %s\n' "${gaps[@]}" >&2
+    echo "Set BUNDLE_STRICT=0 to build anyway." >&2
+    exit 1
+  fi
+  echo "Completeness check passed for ${#SAMPLES[@]} sample(s) (${BUNDLE_REQUIRE:-snv,sv})."
+fi
+
 echo ""
 echo "Bundle tree: $BUNDLE/"
 du -sh "$BUNDLE"

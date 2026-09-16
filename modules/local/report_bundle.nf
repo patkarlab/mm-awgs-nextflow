@@ -10,6 +10,10 @@ process REPORT_BUNDLE {
     // publish" dependency, so the completion signals are taken as inputs and
     // ignored in the script body.
     val  ready_signals
+    // bundle_guard_v1: every sample in the run, and the artefact kinds the
+    // current configuration must have published for each of them.
+    val  sample_ids
+    val  required_kinds
     path bundle_script
     // The panel BEDs are staged rather than resolved relative to the
     // script, because inside a work directory bin/ is staged alone with no
@@ -49,6 +53,31 @@ process REPORT_BUNDLE {
         echo "before publishDir has written them." >&2
         exit 1
     fi
+
+    # bundle_guard_v1. Completion of the producing tasks is already
+    # guaranteed by ready_signals. What is not guaranteed is that publishDir
+    # has finished copying their outputs into the results tree, and on a
+    # resumed run every cached task re-publishes at once. Poll until the
+    # tree holds every required artefact for every sample, then fail
+    # loudly rather than ship a bundle with silent gaps.
+    printf '%s\\n' ${sample_ids.join(' ')} > sample_ids.txt
+    deadline=\$(( SECONDS + ${params.bundle_publish_wait_s} ))
+    until check_published_outputs.sh "${results_dir}" sample_ids.txt "${required_kinds}" \\
+            > publish_check.log 2>&1; do
+        if (( SECONDS >= deadline )); then
+            cat publish_check.log >&2
+            echo "ERROR: required outputs still absent from ${results_dir} after" >&2
+            echo "       ${params.bundle_publish_wait_s} s. Either publishDir has not" >&2
+            echo "       written them or a producing process did not emit them." >&2
+            echo "       Re-run bin/check_published_outputs.sh by hand to see which." >&2
+            exit 1
+        fi
+        sleep 30
+    done
+    cat publish_check.log
+
+    export BUNDLE_STRICT="${params.bundle_strict ? '1' : '0'}"
+    export BUNDLE_REQUIRE="${required_kinds}"
 
     bash ${bundle_script} "${results_dir}" "${bundle_name}"
 

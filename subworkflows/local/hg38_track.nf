@@ -112,7 +112,8 @@ workflow HG38_TRACK {
     // collected separately and matched inside the process by inspecting the
     // staged files, since Nextflow does not guarantee that separately collected
     // channels stage in the same order.
-    baf_screen_ch = Channel.empty()
+    baf_screen_ch  = Channel.empty()
+    baf_figures_ch = Channel.empty()   // bundle_guard_v1
     if (!params.skip_clair3_phased && !params.skip_baf_loh) {
         ids_ch    = CLAIR3_PHASED.out.outdir.map { meta, _dir -> meta.id }.collect()
         clair3_ch = CLAIR3_PHASED.out.outdir.map { _meta, dir -> dir }.collect()
@@ -139,6 +140,7 @@ workflow HG38_TRACK {
                 ichor_ch,
                 file(params.cohort_bed_hg38, checkIfExists: true)
             )
+            baf_figures_ch = BAF_CN_PLOTS.out.figures
         }
     }
 
@@ -155,4 +157,5 @@ workflow HG38_TRACK {
     clair3_annotated_outdir  = (params.skip_clair3_phased || params.skip_vep_annotate) ? Channel.empty() : VEP_ANNOTATE_CLAIR3.out.outdir
     v6_report                = (params.skip_clair3_phased || params.skip_vep_annotate || params.skip_v6_filter) ? Channel.empty() : FILTER_V6_REPORT.out.clinical
     baf_loh_screen           = baf_screen_ch
+    baf_cn_figures           = baf_figures_ch
 }

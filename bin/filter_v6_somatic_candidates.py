@@ -254,9 +254,18 @@ def filter_one_file(input_path, outdir, max_pop_af, include_ig, panel,
     kept.sort(key=sort_key)
 
     # Column order.
+    #
+    # empty_table_header_v1: with no kept rows the column set derived from
+    # the records is empty and DictWriter writes a blank line, not a header.
+    # Downstream then sees a zero-byte table. An empty result is a legitimate
+    # outcome and must still be a valid table, so the header falls back to
+    # the preferred columns plus whatever the input carried.
     all_cols = set()
     for r in kept:
         all_cols.update(r.keys())
+    if not kept:
+        all_cols.update(PREFERRED_COLS)
+        all_cols.update(in_cols)
     ordered = [c for c in PREFERRED_COLS if c in all_cols]
     ordered += [c for c in all_cols if c not in ordered]
 

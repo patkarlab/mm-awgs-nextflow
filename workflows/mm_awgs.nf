@@ -140,6 +140,9 @@ workflow MM_AWGS {
                 .mix(HG38_TRACK.out.ichorcna_outdir.map { it -> 'ok' })
                 .mix(HG38_TRACK.out.v6_report.map       { it -> 'ok' })
                 .mix(HG38_TRACK.out.baf_loh_screen.map  { it -> 'ok' })
+                // bundle_guard_v1: the per-sample BAF figures were never in
+                // the signal, so the bundle could start before they existed.
+                .mix(HG38_TRACK.out.baf_cn_figures.map  { it -> 'ok' })
         }
 
         // IGV pages are collected by the bundle, so the bundle must not
@@ -151,8 +154,30 @@ workflow MM_AWGS {
         bundle_name = params.report_bundle_name
             ?: "report_" + file(params.outdir).getName()
 
+        // bundle_guard_v1: the bundle is handed the full sample list and the
+        // artefact kinds this configuration must have produced, and waits
+        // until all of them are visible in the published tree. Completion
+        // signals alone are not enough: publishDir copies land after the
+        // task completes, not before its outputs are emitted.
+        sample_ids = PREPARE_INPUT.out.minknow_bams
+            .map { meta, _input -> meta.id.toString() }
+            .collect()
+        required_kinds = []
+        if (!params.skip_t2t_track) {
+            required_kinds << 'sv'
+            if (!params.skip_qc) required_kinds << 'qc'
+        }
+        if (!params.skip_hg38_track) {
+            if (!params.skip_clair3_phased && !params.skip_vep_annotate
+                    && !params.skip_v6_filter) required_kinds << 'snv'
+            if (!params.skip_ichorcna) required_kinds << 'cnv'
+            if (!params.skip_clair3_phased && !params.skip_baf_loh) required_kinds << 'baf'
+        }
+
         REPORT_BUNDLE(
             ready.collect().ifEmpty(['none']),
+            sample_ids,
+            required_kinds.join(','),
             file("${projectDir}/bin/build_report_bundle.sh"),
             file(params.panel_bed_t2t,  checkIfExists: true),
             file(params.panel_bed_hg38, checkIfExists: true),
