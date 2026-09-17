@@ -362,10 +362,41 @@ def style_track(axis):
     axis.set_ylim(0, 1)
 
 
+def _label_rows(items, limit, figure_width_in=17.0, axes_fraction=0.86,
+                font_pt=8.0, pad=1.8):
+    """Row index per label so neighbours do not overprint
+    (mmplot_gene_labels_v1).
+
+    items: [(centre_in_data_units, text), ...] in any order. Each label
+    takes the lowest row whose last label ends before this one starts.
+    Text width is estimated at 0.65 em per character (bold) and converted to
+    data units through the axis width, then padded.
+    """
+    per_unit = figure_width_in * axes_fraction / max(limit, 1e-9)  # in/data
+    ends = []  # last occupied x per row
+    rows = {}
+    for centre, text in sorted(items, key=lambda t: t[0]):
+        width = len(text) * font_pt * 0.65 / 72.0 / per_unit * pad
+        start, end = centre - width / 2.0, centre + width / 2.0
+        for row, last_end in enumerate(ends):
+            if start > last_end:
+                ends[row] = end
+                rows[(centre, text)] = row
+                break
+        else:
+            ends.append(end)
+            rows[(centre, text)] = len(ends) - 1
+    return rows, len(ends)
+
+
 def draw_panels(axes, chrom, length, bins, windows, segments, purity, ploidy,
                 max_cn, point_size, genes=None, targets=None, cytobands=None,
                 label_bands=False, compact=False, centromeres=None):
-    """Fill the depth, BAF, copy number, targets and cytogram axes."""
+    """Fill the depth, BAF, copy number, targets and cytogram axes.
+
+    Returns the number of gene-label rows drawn above the depth panel, so
+    the caller can pad the title to clear them."""
+    label_row_count = 0
     ax_depth, ax_baf, ax_cn, ax_targets, ax_ideo = axes
     reference = 1 if chrom in ("chrX", "chrY") else 2
     here = [s for s in segments if s["chrom"] == chrom]
@@ -374,17 +405,33 @@ def draw_panels(axes, chrom, length, bins, windows, segments, purity, ploidy,
 
     # gene highlight bands behind everything
     if genes and not compact:
-        for i, (start, end, name, _extra) in enumerate(genes.get(chrom, [])):
+        gene_list = genes.get(chrom, [])
+        # mmplot_gene_labels_v1: labels staggered onto rows so genes a few
+        # tens of kb apart (TP53/TNFSF12, FGFR3/NSD2) stay legible.
+        rows, label_row_count = _label_rows(
+            [((s + e) / 2 / scale, n) for s, e, n, _x in gene_list if n], limit)
+        row_step = 0.075  # axes fraction per label row
+        for i, (start, end, name, _extra) in enumerate(gene_list):
             colour = HIGHLIGHT[i % len(HIGHLIGHT)]
             for axis in (ax_depth, ax_baf, ax_cn):
                 if axis is not None:
                     axis.axvspan(start / scale, end / scale, color=colour,
                                  alpha=0.55, zorder=0, linewidth=0)
             if ax_depth is not None and name:
-                ax_depth.annotate(name, ((start + end) / 2 / scale, 1.02),
+                centre = (start + end) / 2 / scale
+                row = rows.get((centre, name), 0)
+                y = 1.02 + row * row_step
+                ax_depth.annotate(name, (centre, y),
                                   xycoords=("data", "axes fraction"),
                                   ha="center", va="bottom", fontsize=8,
-                                  fontweight="bold", color="0.2")
+                                  fontweight="bold", color="0.2",
+                                  annotation_clip=False)
+                if row > 0:
+                    # tick from the band up to a raised label
+                    ax_depth.plot([centre, centre], [1.0, y - 0.005],
+                                  transform=ax_depth.get_xaxis_transform(),
+                                  color="0.6", linewidth=0.6, clip_on=False,
+                                  zorder=1)
 
     centromere_table = T2T_CENTROMERES if centromeres is None else centromeres
     for axis in [a for a in axes if a is not None]:
@@ -461,6 +508,7 @@ def draw_panels(axes, chrom, length, bins, windows, segments, purity, ploidy,
         draw_cytogram(ax_ideo, chrom, length, cytobands or {}, label_bands,
                       centromeres=centromeres)
         ax_ideo.tick_params(labelbottom=True, labelsize=8)
+    return label_row_count
 
 
 def main():
@@ -634,11 +682,12 @@ def main():
             axes = built
         else:
             axes = [built[0], None] + built[1:]
-        draw_panels(axes, chrom, lengths[chrom], bins, windows, segments,
+        label_rows = draw_panels(
+                    axes, chrom, lengths[chrom], bins, windows, segments,
                     rho, psi, args.max_cn,
                     point_size=13.0 * args.point_scale, genes=genes,
                     targets=targets, cytobands=cytobands, label_bands=True,
-                    centromeres=centromeres)
+                    centromeres=centromeres) or 0
         built[0].set_ylabel("log2 depth ratio")
         if show_baf:
             built[1].set_ylabel("BAF\nallele fraction")
@@ -648,8 +697,9 @@ def main():
         built[-1].set_ylabel("cytoband", fontsize=8, rotation=0, ha="right",
                              va="center")
         built[-1].set_xlabel("%s position (Mb)" % chrom)
+        # mmplot_gene_labels_v1: one extra label row needs about 11 pt.
         built[0].set_title(wrap_header("%s  --  %s" % (chrom, header), 17, 13),
-                           fontsize=13, pad=22)
+                           fontsize=13, pad=22 + 11 * max(0, label_rows - 1))
         # The call-class colours still apply to the depth scatter, so the
         # legend moves there rather than going with the panel.
         (built[1] if show_baf else built[0]).legend(
