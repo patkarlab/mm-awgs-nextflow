@@ -100,8 +100,8 @@
           <div>
             <h4 class="mb-1">Reporting</h4>
             <p class="text-muted small mb-0">
-              Variants ticked in the Clinical tab and CNV plots ticked in the CNV
-              tab appear here in selection order. Selections persist in this
+              Rearrangement loci, panel windows, variants and copy-number plots
+              ticked elsewhere in this report appear here in selection order. Selections persist in this
               browser via <code>localStorage</code>. AMP/ASCO/CAP Tier and the
               CNV interpretation captions are editable and also persist.
               When CancerVar annotation is enabled at build time, the tier column
@@ -121,10 +121,55 @@
         </div>
 
         <div id="reporting-empty" class="tspipe-empty">
-          Nothing triaged yet. Open the "Variants &mdash; Clinical" tab and mark a
-          variant <strong>Incl</strong> (include in report) or <strong>Excl</strong>
-          (reviewed, not reported), and/or open the "CNV" tab and tick a plot's
-          "Include" checkbox.
+          Nothing triaged yet. Tick a locus <strong>Include</strong> box on the
+          Rearrangements tab, mark a variant <strong>Incl</strong> or
+          <strong>Excl</strong> on the "Variants &mdash; Clinical" tab, or tick a
+          copy-number plot's "Include" checkbox.
+        </div>
+
+        {# ----- Rearrangements section (rx_include_v1) ----- #}
+        <div id="reporting-rx-section" style="display:none">
+          <h5 class="mt-2 mb-2">
+            Rearrangements <span id="reporting-rx-count-badge" class="badge bg-secondary ms-1">0</span>
+          </h5>
+          <p class="text-muted small mb-2">
+            Loci ticked on the Rearrangements tab, in selection order. The
+            interpretation is editable and persists in this browser; it is
+            included in the copied TSV.
+          </p>
+          <div class="table-responsive">
+            <table class="table table-sm table-hover align-middle" id="reporting-rx-table">
+              <thead class="table-light">
+                <tr>
+                  <th scope="col" style="width:32px"></th>
+                  <th scope="col">Anchor</th>
+                  <th scope="col">Partner</th>
+                  <th scope="col">Named pair / tier</th>
+                  <th scope="col">Breakends</th>
+                  <th scope="col">Reads</th>
+                  <th scope="col">Callers</th>
+                  <th scope="col">nanomonsv</th>
+                  <th scope="col" style="min-width:220px">Interpretation</th>
+                  <th scope="col" style="width:32px"></th>
+                </tr>
+              </thead>
+              <tbody id="reporting-rx-tbody"></tbody>
+            </table>
+          </div>
+        </div>
+
+        {# ----- Panel windows section (rx_include_v2) ----- #}
+        <div id="reporting-win-section" class="mt-4" style="display:none">
+          <h5 class="mt-2 mb-2">
+            Copy number and allelic state at panel windows
+            <span id="reporting-win-count-badge" class="badge bg-secondary ms-1">0</span>
+          </h5>
+          <p class="text-muted small mb-2">
+            Windows ticked on the Copy number &amp; allelic state tab. Where the
+            window was assessed, its depth and allele-fraction plot is shown.
+            The interpretation is editable and persists in this browser.
+          </p>
+          <div id="reporting-win-list"></div>
         </div>
 
         {# ----- Variants section ----- #}
@@ -344,6 +389,12 @@
     const variantCountBadge = document.getElementById("reporting-variant-count-badge");
     const cnvCountBadge = document.getElementById("reporting-cnv-count-badge");
     const toast = document.getElementById("reporting-copied-toast");
+    const rxSection = document.getElementById("reporting-rx-section");      // rx_include_v1
+    const rxTbody = document.getElementById("reporting-rx-tbody");
+    const rxCountBadge = document.getElementById("reporting-rx-count-badge");
+    const winSection = document.getElementById("reporting-win-section");    // rx_include_v2
+    const winList = document.getElementById("reporting-win-list");
+    const winCountBadge = document.getElementById("reporting-win-count-badge");
     if (!tbody || !window.tspipeReporting) return;
 
     const VARIANT_COLUMNS = [
@@ -383,6 +434,100 @@
       const caption = window.tspipeReporting.getCnvCaption(it.id) || "";
       // Strip newlines from caption so it doesn't break TSV grid
       return [(s.label || ""), (s.path || ""), caption.replace(/\s+/g, " ")].join("\t");
+    }
+
+    const RX_COLUMNS = ["Anchor", "Partner", "Named pair", "Tier", "Breakend A", "Breakend B",
+                        "Reads", "Callers", "nanomonsv", "Interpretation"];
+
+    function rxRowToTsv(it) {
+      const s = it.snapshot || {};
+      const note = (window.tspipeReporting.getRxNote(it.id) || "").replace(/\s+/g, " ");
+      return [s.anchor || "", s.partner || "", s.pair || "", s.tier || "", s.point_a || "", s.point_b || "",
+              s.reads || "", s.callers || "", s.nano || "", note].join("\t");
+    }
+
+    function renderRx(rxs) {
+      if (!rxSection) return;
+      if (rxs.length === 0) {
+        rxSection.style.display = "none";
+        rxTbody.innerHTML = "";
+        return;
+      }
+      rxSection.style.display = "";
+      rxCountBadge.textContent = String(rxs.length);
+      rxTbody.innerHTML = rxs.map(function (it, idx) {
+        const s = it.snapshot || {};
+        const note = escapeHtml(window.tspipeReporting.getRxNote(it.id) || "");
+        const pair = escapeHtml(s.pair || "") + (s.tier ? ' <span class="badge bg-secondary">' + escapeHtml(s.tier) + '</span>' : "");
+        return '<tr data-rx-key="' + escapeHtml(it.id) + '">' +
+                 '<td class="text-muted small">' + (idx + 1) + '</td>' +
+                 '<td>' + escapeHtml(s.anchor) + '</td>' +
+                 '<td>' + escapeHtml(s.partner) + '</td>' +
+                 '<td>' + pair + '</td>' +
+                 '<td class="font-monospace small">' + escapeHtml(s.point_a) + '<br>' + escapeHtml(s.point_b) + '</td>' +
+                 '<td>' + escapeHtml(s.reads) + '</td>' +
+                 '<td class="small">' + escapeHtml(s.callers) + '</td>' +
+                 '<td class="small">' + escapeHtml(s.nano) + '</td>' +
+                 '<td><input type="text" class="form-control form-control-sm reporting-rx-note-input" ' +
+                       'data-rx-key="' + escapeHtml(it.id) + '" placeholder="interpretation" value="' + note + '" maxlength="300"></td>' +
+                 '<td><button type="button" class="btn btn-sm btn-outline-secondary reporting-rx-remove" ' +
+                       'data-rx-key="' + escapeHtml(it.id) + '" title="Remove from report">&times;</button></td>' +
+               '</tr>';
+      }).join("");
+    }
+
+    // rx_include_v2. Notes share the rx-note store; window ids (chrN:GENE)
+    // and locus keys (A::B|...) cannot collide.
+    const WIN_COLUMNS = ["Window", "Chromosome", "Band", "Depth log2 (on-target)", "Copy number",
+                         "Cell fraction", "Allelic state", "Hets / usable", "Reading", "Interpretation"];
+
+    function winRowToTsv(it) {
+      const s = it.snapshot || {};
+      const note = (window.tspipeReporting.getRxNote(it.id) || "").replace(/\s+/g, " ");
+      return [s.gene || "", s.chrom || "", s.band || "", s.log2 || "", s.cn || "", s.cf || "",
+              s.state || "", s.hets || "", s.reading || "", note].join("\t");
+    }
+
+    function renderWins(wins) {
+      if (!winSection) return;
+      if (wins.length === 0) {
+        winSection.style.display = "none";
+        winList.innerHTML = "";
+        return;
+      }
+      winSection.style.display = "";
+      winCountBadge.textContent = String(wins.length);
+      winList.innerHTML = wins.map(function (it, idx) {
+        const s = it.snapshot || {};
+        const note = escapeHtml(window.tspipeReporting.getRxNote(it.id) || "");
+        const facts = [
+          ["Depth log2", s.log2], ["Copy number", s.cn], ["Cell fraction", s.cf],
+          ["Allelic state", s.state], ["Hets / usable", s.hets], ["Reading", s.reading]
+        ].filter(function (p) { return p[1]; }).map(function (p) {
+          return '<span class="me-3"><span class="text-muted">' + p[0] + '</span> ' + escapeHtml(p[1]) + '</span>';
+        }).join("");
+        return '<div class="card mb-3" data-win-id="' + escapeHtml(it.id) + '">' +
+                 '<div class="card-header d-flex justify-content-between align-items-center py-2">' +
+                   '<span class="fw-medium">' + (idx + 1) + '. ' + escapeHtml(s.gene) +
+                     ' <span class="text-muted small">' + escapeHtml(s.chrom) + ' ' + escapeHtml(s.band) + '</span></span>' +
+                   '<button type="button" class="btn btn-sm btn-outline-secondary reporting-win-remove" ' +
+                     'data-win-id="' + escapeHtml(it.id) + '" title="Remove from report">Remove</button>' +
+                 '</div>' +
+                 '<div class="card-body">' +
+                   '<div class="small mb-2">' + facts + '</div>' +
+                   (s.svg_id ? '<div data-win-svg-slot="' + escapeHtml(s.svg_id) + '"></div>' : '') +
+                   '<label class="form-label mt-2 mb-1 small text-muted">Interpretation (editable, saved automatically)</label>' +
+                   '<textarea class="form-control form-control-sm reporting-win-note-input" data-win-id="' + escapeHtml(it.id) + '" rows="2" ' +
+                     'placeholder="e.g. 17p13.1 balanced at 173 heterozygous sites; no evidence of TP53 loss">' + note + '</textarea>' +
+                 '</div>' +
+               '</div>';
+      }).join("");
+      // The plot lives on the copy-number tab of this same page; clone it
+      // rather than store 100 KB of SVG per window in localStorage.
+      winList.querySelectorAll("[data-win-svg-slot]").forEach(function (slot) {
+        const src = document.getElementById(slot.getAttribute("data-win-svg-slot"));
+        if (src) slot.appendChild(src.cloneNode(true));
+      });
     }
 
     function renderVariants(variants) {
@@ -490,7 +635,9 @@
       const variants = allVariants.filter(function (it) { return (it.decision || "include") === "include"; });
       const excluded = allVariants.filter(function (it) { return it.decision === "exclude"; });
       const cnvs = all.filter(function (it) { return it.kind === "cnv_plot"; });
-      const total = variants.length + excluded.length + cnvs.length;
+      const rxs = all.filter(function (it) { return it.kind === "rearrangement"; });   // rx_include_v1
+      const wins = all.filter(function (it) { return it.kind === "allelic_window"; }); // rx_include_v2
+      const total = variants.length + excluded.length + cnvs.length + rxs.length + wins.length;
 
       // Tab nav badge -- combined count of everything triaged
       if (tabBadge) {
@@ -504,6 +651,8 @@
         variantsSection.style.display = "none";
         excludedSection.style.display = "none";
         cnvSection.style.display = "none";
+        if (rxSection) rxSection.style.display = "none";
+        if (winSection) winSection.style.display = "none";
         copyBtn.disabled = true;
         clearBtn.disabled = true;
         return;
@@ -512,6 +661,8 @@
       copyBtn.disabled = false;
       clearBtn.disabled = false;
 
+      renderRx(rxs);
+      renderWins(wins);
       renderVariants(variants);
       renderExcluded(excluded);
       renderCnvs(cnvs);
@@ -523,8 +674,22 @@
       const variants = allVariants.filter(function (it) { return (it.decision || "include") === "include"; });
       const excluded = allVariants.filter(function (it) { return it.decision === "exclude"; });
       const cnvs = all.filter(function (it) { return it.kind === "cnv_plot"; });
+      const rxs = all.filter(function (it) { return it.kind === "rearrangement"; });
       const sections = [];
+      if (rxs.length) {
+        sections.push("# Rearrangements");
+        sections.push(RX_COLUMNS.join("\t"));
+        rxs.forEach(function (it) { sections.push(rxRowToTsv(it)); });
+      }
+      const wins = all.filter(function (it) { return it.kind === "allelic_window"; });
+      if (wins.length) {
+        if (sections.length) sections.push("");
+        sections.push("# Copy number and allelic state at panel windows");
+        sections.push(WIN_COLUMNS.join("\t"));
+        wins.forEach(function (it) { sections.push(winRowToTsv(it)); });
+      }
       if (variants.length) {
+        if (sections.length) sections.push("");
         sections.push("# Variants");
         sections.push(VARIANT_COLUMNS.join("\t"));
         variants.forEach(function (it) { sections.push(variantRowToTsv(it)); });
@@ -587,6 +752,12 @@
         window.tspipeReporting.load()
           .filter(function (it) { return it.kind === "cnv_plot"; })
           .forEach(function (it) { window.tspipeReporting.setCnvCaption(it.id, ""); });
+        window.tspipeReporting.load()
+          .filter(function (it) { return it.kind === "rearrangement"; })
+          .forEach(function (it) { window.tspipeReporting.setRxNote(it.id, ""); });
+        window.tspipeReporting.load()
+          .filter(function (it) { return it.kind === "allelic_window"; })
+          .forEach(function (it) { window.tspipeReporting.setRxNote(it.id, ""); });
         window.tspipeReporting.clearAll();
       }
     });
@@ -652,6 +823,48 @@
       }
     });
 
+    // rx_include_v1: interpretation edits persist on input; remove toggles off.
+    if (rxTbody) {
+      rxTbody.addEventListener("input", function (ev) {
+        const inp = ev.target.closest(".reporting-rx-note-input");
+        if (!inp) return;
+        window.tspipeReporting.setRxNote(inp.getAttribute("data-rx-key"), inp.value);
+      });
+      rxTbody.addEventListener("click", function (ev) {
+        const btn = ev.target.closest(".reporting-rx-remove");
+        if (!btn) return;
+        const key = btn.getAttribute("data-rx-key");
+        const item = window.tspipeReporting.load().find(function (it) {
+          return it.kind === "rearrangement" && it.id === key;
+        });
+        if (item) {
+          window.tspipeReporting.setRxNote(key, "");
+          window.tspipeReporting.toggle("rearrangement", key, item.snapshot);
+        }
+      });
+    }
+
+    // rx_include_v2: window notes persist on input; remove toggles off.
+    if (winList) {
+      winList.addEventListener("input", function (ev) {
+        const ta = ev.target.closest(".reporting-win-note-input");
+        if (!ta) return;
+        window.tspipeReporting.setRxNote(ta.getAttribute("data-win-id"), ta.value);
+      });
+      winList.addEventListener("click", function (ev) {
+        const btn = ev.target.closest(".reporting-win-remove");
+        if (!btn) return;
+        const key = btn.getAttribute("data-win-id");
+        const item = window.tspipeReporting.load().find(function (it) {
+          return it.kind === "allelic_window" && it.id === key;
+        });
+        if (item) {
+          window.tspipeReporting.setRxNote(key, "");
+          window.tspipeReporting.toggle("allelic_window", key, item.snapshot);
+        }
+      });
+    }
+
     // Re-render on selection change
     window.tspipeReporting.onChange(render);
 
@@ -663,8 +876,12 @@
   // CNV tab gallery: wire the "Include in report" checkboxes on each plot card.
   // ---------------------------------------------------------------------------
   function initCNVGallery() {
-    const cnvTab = document.getElementById("tab-cnv");
-    if (!cnvTab || !window.tspipeReporting) return;
+    // rx_include_v3: the pane was #tab-cnv before dashboard_mm_v3 merged it
+    // into #tab-copy-number; the old lookup returned null and the figure
+    // cards' Include boxes were never wired. Fall back to the document.
+    const cnvTab = document.getElementById("tab-copy-number")
+                || document.getElementById("tab-cnv") || document;
+    if (!window.tspipeReporting) return;
     const countBadge = document.getElementById("cnv-selection-count-badge");
 
     function syncCheckboxes() {

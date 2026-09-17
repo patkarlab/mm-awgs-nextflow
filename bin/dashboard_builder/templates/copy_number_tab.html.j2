@@ -221,6 +221,7 @@
                   <th title="ichorCNA state at the window, off-target reads">Copy number</th>
                   <th title="cell fraction from flow purity">Cell fraction</th>
                   <th>Allelic state</th><th class="text-end">Hets / usable</th><th>Reading</th>
+                  <th title="tick to include this window in the Reporting tab">Include</th>{# rx_include_v2 #}
                 </tr></thead>
                 <tbody>
                 {% for w in ch.windows %}
@@ -241,10 +242,19 @@
                     </td>
                     <td class="text-end text-muted">{% if w.n_usable %}{{ w.n_het }} / {{ w.n_usable }}{% endif %}</td>
                     <td>{{ w.reading }}</td>
+                    <td class="text-center">
+                      <input type="checkbox" class="form-check-input cn-win-include" title="include in the Reporting tab"
+                             data-win-id="{{ w.chrom }}:{{ w.gene }}" data-gene="{{ w.gene }}" data-chrom="{{ w.chrom }}" data-band="{{ w.band }}"
+                             data-log2="{{ '%.2f'|format(w.log2_ontarget) if w.log2_ontarget is not none else '' }}"
+                             data-cn="{{ w.cn if w.cn is not none else '' }}{% if w.cn_event and w.cn_event != 'none' %} ({{ w.cn_event }}){% endif %}"
+                             data-cf="{{ '%.0f%%'|format(w.cell_fraction*100) if w.cell_fraction is not none else '' }}"
+                             data-state="{{ w.allelic_state or 'not assessed' }}" data-hets="{% if w.n_usable %}{{ w.n_het }} / {{ w.n_usable }}{% endif %}"
+                             data-reading="{{ w.reading }}" data-svg-id="{% if w.svg %}cn-win-svg-{{ page.chrom }}-{{ loop.index }}{% endif %}">
+                    </td>
                   </tr>
                   {% if w.svg %}
                     <tr class="cn-win-plot" data-cn-win-plot="{{ page.chrom }}-{{ loop.index }}" style="display:none">
-                      <td colspan="9" class="bg-white">{{ w.svg | safe }}
+                      <td colspan="10" class="bg-white"><div id="cn-win-svg-{{ page.chrom }}-{{ loop.index }}">{{ w.svg | safe }}</div>
                         {# allelic_gene_track_v1: swatch legend and reading guide #}
                         <div class="small text-muted mt-1">
                           <span class="me-3"><span style="display:inline-block;width:14px;height:3px;background:#1F3B73;vertical-align:middle"></span> depth log2, 1 kb bin</span>
@@ -417,7 +427,38 @@
      cannot collide with the shared vb-cnv- include machinery. #}
   <script>
   (function () {
+    // rx_include_v2: window Include boxes, backed by the Reporting store.
+    // Waits for load: the store is defined by a script at the end of body.
+    window.addEventListener("load", function () {
+      var store = window.tspipeReporting;
+      if (!store) { return; }
+      function snapshotOf(box) {
+        var s = {};
+        ["gene", "chrom", "band", "log2", "cn", "cf", "state", "hets", "reading"].forEach(function (k) {
+          s[k] = box.getAttribute("data-" + k) || "";
+        });
+        s.svg_id = box.getAttribute("data-svg-id") || "";
+        return s;
+      }
+      function sync() {
+        var ids = {};
+        store.load().forEach(function (it) { if (it.kind === "allelic_window") { ids[it.id] = true; } });
+        document.querySelectorAll(".cn-win-include").forEach(function (box) {
+          var on = !!ids[box.getAttribute("data-win-id")];
+          if (box.checked !== on) { box.checked = on; }
+        });
+      }
+      document.addEventListener("change", function (e) {
+        var box = e.target.closest ? e.target.closest(".cn-win-include") : null;
+        if (!box) { return; }
+        store.toggle("allelic_window", box.getAttribute("data-win-id"), snapshotOf(box));
+      });
+      store.onChange(sync);
+      sync();
+    });
+
     document.addEventListener("click", function (event) {
+      if (event.target.closest && event.target.closest("input")) { return; }
       var row = event.target.closest ? event.target.closest(".cn-win-row") : null;
       if (!row) { return; }
       var id = row.getAttribute("data-cn-win");

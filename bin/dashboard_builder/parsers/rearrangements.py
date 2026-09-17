@@ -93,6 +93,42 @@ READING_KEY = [
      "breakends."),
 ]
 
+# rx_detail_key_v1: what each field in a locus's detail row means. Order is
+# the display order; fields absent from a row are simply not shown.
+DETAIL_KEY = [
+    ("sv_id", "identifier of the representative record, the caller-named breakend with the most supporting reads among those merged into this junction"),
+    ("merged_sv_ids", "every caller record SURVIVOR merged into this junction, by the caller's own name for it; one caller can contribute two records when it wrote both mates"),
+    ("n_merged", "how many caller records were merged"),
+    ("support_representative", "supporting reads of the representative record, as its caller reported them"),
+    ("support_sniffles", "supporting reads Sniffles reported for this junction (INFO/SUPPORT); blank when Sniffles did not call it"),
+    ("support_cutesv", "supporting reads CuteSV reported (INFO/RE)"),
+    ("support_severus", "supporting reads Severus reported (FORMAT/DV)"),
+    ("support_savana", "supporting reads SAVANA reported (INFO/TUMOUR_READ_SUPPORT)"),
+    ("filter_sniffles", "Sniffles' FILTER for its record: PASS, or GT when it could not assign a genotype, which every low-support call receives"),
+    ("filter_cutesv", "CuteSV's FILTER: PASS, or q5 when its quality score is below 5, which every two- or three-read call receives"),
+    ("filter_severus", "Severus' FILTER for its record"),
+    ("filter_savana", "SAVANA's FILTER: PASS, or PREDICTED_NOISE when its classifier scored the call as noise"),
+    ("support_nanomonsv", "supporting reads nanomonsv found for the same junction, in its independent run against the HPRC control panel"),
+    ("filter_nanomonsv", "nanomonsv's FILTER: PASS means confirmed; anything else names why it rejected the junction"),
+    ("supp_vec", "SURVIVOR's presence vector at merge time, one digit per caller in the order they were merged (Sniffles, CuteSV, Severus, SAVANA). The per-caller support fields above are re-derived afterwards by matching each caller's own VCF at the position, so a caller can show reads there while its digit here is 0; trust the support fields"),
+    ("pon_freq", "how often a junction at this position appears in the panel of normal genomes; a common one is a mapping artefact or a germline variant, not a tumour event"),
+    ("known_mm_pair", "the named myeloma rearrangement this junction matches in the reference dictionary, in ISCN form"),
+    ("entity", "the WHO 5th edition entity that the named pair defines, where it defines one"),
+    ("tier", "dictionary tier of the named pair: defining (a primary, disease-defining translocation), secondary (a progression event such as a MYC rearrangement), or lower"),
+    ("known_freq", "published frequency of the named pair in newly diagnosed myeloma"),
+    ("match_quality", "how the junction matched the dictionary entry: full when both breakends fall in the expected windows; partial when only one does and the other is nearby"),
+    ("anchor", "the locus this junction is grouped under: an immunoglobulin locus (IGH_locus, IGK_locus, IGL_locus) or MYC"),
+    ("anchor_class", "mechanism class of the anchor: enhancer_hijack for an immunoglobulin locus placing its enhancer next to the partner gene; for MYC the class describes the partner (Ig or non-Ig) rather than a mechanism"),
+    ("flag", "why the junction is not reportable; hover the flag badge in the table for the same text"),
+    ("dict_notes", "free-text note from the reference dictionary entry"),
+    ("ig_region_a", "for a breakend in an immunoglobulin locus, which sub-region it falls in: C_switch (constant/switch, where primary translocations arise), J, D or V"),
+    ("ig_region_b", "as ig_region_a, for the other breakend"),
+    ("gene_a_dist", "distance in bp from breakend A to the gene it is named after; 0 means inside the gene body"),
+    ("gene_b_dist", "as gene_a_dist, for breakend B"),
+    ("filter", "the merged record's own FILTER after the ensemble, PASS unless every caller rejected it"),
+]
+DETAIL_KEY_MAP = dict(DETAIL_KEY)
+
 COLUMN_KEY = [
     ("Anchor / partner", "the anchor locus and the partner locus of the junction; coordinates on T2T-CHM13v2.0 with the nearest gene or panel window, cytoband and Ig sub-region"),
     ("Named pair / tier", "dictionary name and tier; entity per WHO 5th where the pair defines one"),
@@ -236,6 +272,7 @@ def parse(effective_dir, sample, locus_tol=1_000_000, igv_flank=5000):
         return {"found": False, "reason": reason, "searched": str(effective_dir),
                 "reportable": [], "other": [], "n_junctions": 0, "summary": {},
                 "reading_key": READING_KEY, "column_key": COLUMN_KEY,
+                "detail_key": DETAIL_KEY, "detail_key_map": DETAIL_KEY_MAP,
                 "other_svs": [], "locus_tol": locus_tol}
 
     path = _find(effective_dir, sample, "translocations.tsv")
@@ -323,7 +360,17 @@ def parse(effective_dir, sample, locus_tol=1_000_000, igv_flank=5000):
         tiered = [m for m in ms if m["tier"]]
         graded = tiered[0] if tiered else None
         flagged = [m for m in ms if m["flag"]]
+        # rx_include_v1: durable identity for the Reporting tab's store.
+        # Table row ids are positional and shift when a filter or a
+        # rebuild reorders loci; gene pair plus both breakend positions
+        # to 100 kb is stable across rebuilds of the same calls.
+        key = "%s::%s|%s:%d|%s:%d" % (
+            _mode([m["agene"] for m in ms]) or anchor,
+            _mode([m["pgene"] for m in ms]) or "",
+            best["achrom"], min(apos) // 100000,
+            best["pchrom"], min(ppos) // 100000)
         return {
+            "key": key,
             "anchor": anchor,
             "anchor_label": _span_label(best["achrom"], min(apos), max(apos)),
             "anchor_gene": _mode([m["agene"] for m in ms]),
@@ -432,6 +479,7 @@ def parse(effective_dir, sample, locus_tol=1_000_000, igv_flank=5000):
         "other_svs": other_svs,
         "summary": summary,
         "reading_key": READING_KEY, "column_key": COLUMN_KEY,
+        "detail_key": DETAIL_KEY, "detail_key_map": DETAIL_KEY_MAP,
         "locus_tol": locus_tol,
         "has_igv": bool(igv),
     }

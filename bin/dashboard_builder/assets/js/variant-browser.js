@@ -179,6 +179,28 @@
       } catch (e) {}
     }
 
+    // rx_include_v1: interpretation note per included rearrangement locus.
+    // Same persistence model as CNV captions, separate prefix.
+    const RX_NOTE_KEY_PREFIX = "tspipe-rx-note:";
+
+    function getRxNote(id) {
+      if (!sampleKey || !HAS_STORAGE) return "";
+      try {
+        return window.localStorage.getItem(RX_NOTE_KEY_PREFIX + sampleKey + ":" + id) || "";
+      } catch (e) { return ""; }
+    }
+
+    function setRxNote(id, text) {
+      if (!sampleKey || !HAS_STORAGE) return;
+      try {
+        if (text) {
+          window.localStorage.setItem(RX_NOTE_KEY_PREFIX + sampleKey + ":" + id, text);
+        } else {
+          window.localStorage.removeItem(RX_NOTE_KEY_PREFIX + sampleKey + ":" + id);
+        }
+      } catch (e) {}
+    }
+
     function onChange(cb) { listeners.push(cb); }
 
     // Extract just the COSMIC identifiers (COSV*, COSM*, COSN*) from VEP's
@@ -206,6 +228,8 @@
       setTier: setTier,
       getCnvCaption: getCnvCaption,
       setCnvCaption: setCnvCaption,
+      getRxNote: getRxNote,
+      setRxNote: setRxNote,
       onChange: onChange,
       extractCosmicIds: extractCosmicIds,
       hasStorage: function () { return HAS_STORAGE; },

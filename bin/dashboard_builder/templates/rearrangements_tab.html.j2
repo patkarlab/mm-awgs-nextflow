@@ -59,6 +59,17 @@
       </tbody>
     </table>
   </details>
+  {# rx_detail_key_v1 #}
+  <details class="mb-3">
+    <summary class="small">Detail field key &mdash; the fields shown when a locus row is opened</summary>
+    <table class="table table-sm table-borderless small mb-0" style="max-width:1100px">
+      <tbody>
+        {% for head, text in rx.detail_key %}
+          <tr><td class="text-nowrap"><code>{{ head }}</code></td><td>{{ text }}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </details>
 
   {# ---- filters ---- #}
   <div class="d-flex flex-wrap align-items-center gap-2 mb-2 small" id="rx-filters">
@@ -82,6 +93,8 @@
       <button type="button" class="btn btn-outline-secondary" data-rx-min="5">5</button>
       <button type="button" class="btn btn-outline-secondary" data-rx-min="10">10</button>
     </div>
+    {# rx_include_v1 #}
+    <button type="button" class="btn btn-sm btn-outline-primary ms-2" id="rx-include-reportable" title="tick every reportable locus for the Reporting tab">Include all reportable</button>
     <span class="text-muted ms-auto" id="rx-count"></span>
   </div>
 
@@ -125,15 +138,25 @@
         {% if l.nano_reads %}<div class="small text-muted">{{ l.nano_reads }} reads</div>{% endif %}
       </td>
       <td>{% if l.flag %}<span class="badge border text-warning border-warning bg-transparent" title="{{ l.flag }}" style="cursor:help">flag</span>{% endif %}</td>
+      <td class="text-center">
+        <input type="checkbox" class="form-check-input rx-include" title="include in the Reporting tab"
+               data-rx-key="{{ l.key }}" data-reportable="{{ 1 if l.reportable else 0 }}"
+               data-anchor="{{ l.anchor_gene }} {{ l.anchor_band }}{% if l.anchor_ig %} {{ l.anchor_ig }}{% endif %}"
+               data-partner="{{ l.partner_gene }} {{ l.partner_band }}{% if l.partner_ig %} {{ l.partner_ig }}{% endif %}"
+               data-pair="{{ l.known_pair }}" data-tier="{{ l.tier }}"
+               data-reads="{{ l.reads if l.reads is not none else '' }}" data-callers="{{ l.callers | join(', ') }}"
+               data-nano="{{ 'confirmed' if l.nano == 'yes' else (l.nano_filter or ('not reported' if l.nano == 'no' else '')) }}"
+               data-point-a="{{ l.igv.point_a }}" data-point-b="{{ l.igv.point_b }}">
+      </td>
     </tr>
     <tr class="rx-detail" data-rx-detail="{{ lid }}" style="display:none">
       <td></td>
-      <td colspan="9" class="bg-white small">
+      <td colspan="10" class="bg-white small">
         <div class="row g-2">
           <div class="col-md-6">
             <table class="table table-sm table-borderless mb-0 small">
               {% for k, v in l.detail %}
-                <tr><td class="text-muted text-nowrap pe-3">{{ k }}</td><td style="overflow-wrap:anywhere">{{ v }}</td></tr>
+                <tr><td class="text-muted text-nowrap pe-3"{% if rx.detail_key_map and k in rx.detail_key_map %} title="{{ rx.detail_key_map[k] }}" style="cursor:help;text-decoration:underline dotted"{% endif %}>{{ k }}</td><td style="overflow-wrap:anywhere">{{ v }}</td></tr>
               {% endfor %}
             </table>
           </div>
@@ -141,7 +164,7 @@
             <p class="mb-1"><strong>Breakend A</strong> {{ l.igv.point_a }} ({{ l.igv.label_a }})<br><strong>Breakend B</strong> {{ l.igv.point_b }} ({{ l.igv.label_b }})</p>
             {% if l.flag %}<p class="mb-1"><strong>Flag:</strong> {{ l.flag }}</p>{% endif %}
             {% if l.entity %}<p class="mb-1"><strong>Entity:</strong> {{ l.entity }}{% if l.known_freq %} &middot; published frequency {{ l.known_freq }}{% endif %}</p>{% endif %}
-            <p class="mb-0">Fields are those of the best-supported breakend; per-caller read counts are re-derived from each caller's own VCF.</p>
+            <p class="mb-0">These fields belong to the breakend with the most supporting reads in this locus. Read counts per caller are taken from each caller's own output, not from the merged record. Hover a field name for its meaning, or open the Detail field key above the table.</p>
           </div>
         </div>
       </td>
@@ -166,6 +189,7 @@
           <td><code class="small">{{ m.worst_filter }}</code></td>
           <td class="small">{{ 'confirmed' if m.nano_conf == 'yes' else (m.nano_filter or ('not reported' if m.nano_conf == 'no' else '')) }}</td>
           <td>{% if m.flag %}<span class="badge border text-warning border-warning bg-transparent" title="{{ m.flag }}" style="cursor:help">flag</span>{% endif %}</td>
+          <td></td>
         </tr>
       {% endfor %}
     {% endif %}
@@ -180,6 +204,7 @@
             <th title="breakends in this locus">#</th><th></th>
             <th>Anchor</th><th>Partner</th><th>Named pair / tier</th>
             <th class="text-end">Reads</th><th>Callers</th><th>Worst filter</th><th>nanomonsv</th><th>Flag</th>
+            <th title="tick to include this locus in the Reporting tab">Include</th>
           </tr>
         </thead>
         <tbody>
@@ -187,7 +212,7 @@
           {% for g in groups %}
             {% if g.n_loci > 1 and g.anchor %}
               <tr class="rx-group table-light" data-rx-group="{{ table_id }}-g{{ loop.index }}">
-                <td colspan="10" class="small">
+                <td colspan="11" class="small">
                   <strong>{{ g.anchor_display }} event group</strong> &middot; {{ g.n_loci }} partner loci
                   {% if g.anchor == 'MYC' %}<span class="text-muted">&middot; MYC is commonly rearranged with several partners at once; read the loci together</span>{% endif %}
                 </td>
@@ -199,7 +224,7 @@
             {% endfor %}
           {% endfor %}
           {% if not groups %}
-            <tr><td colspan="10" class="text-muted small">none</td></tr>
+            <tr><td colspan="11" class="text-muted small">none</td></tr>
           {% endif %}
         </tbody>
       </table>
@@ -325,7 +350,7 @@
       });
     });
     document.addEventListener('click', function (e) {
-      if (e.target.closest && (e.target.closest('button') || e.target.closest('a'))) { return; }
+      if (e.target.closest && (e.target.closest('button') || e.target.closest('a') || e.target.closest('input') || e.target.closest('label'))) { return; }
       var row = e.target.closest ? e.target.closest('tr.rx-locus') : null;
       if (!row) { return; }
       var d = document.querySelector('tr.rx-detail[data-rx-detail="' + row.getAttribute('data-rx-id') + '"]');
@@ -341,6 +366,48 @@
       t.innerHTML = (open ? '&#9660; ' : '&#9654; ') + t.textContent.replace(/[^0-9]/g, '');
     });
     applyFilters();
+
+    // rx_include_v1: Include checkboxes, backed by the Reporting store.
+    // rx_include_v2: this inline script runs before variant-browser.js
+    // (loaded at the end of body) defines the store, and before
+    // $(document).ready sets its sample, so the wiring waits for load.
+    window.addEventListener('load', function () {
+      var store = window.tspipeReporting;
+      if (!store) { return; }
+      function snapshotOf(box) {
+        return {
+          anchor: box.getAttribute('data-anchor') || '', partner: box.getAttribute('data-partner') || '',
+          pair: box.getAttribute('data-pair') || '', tier: box.getAttribute('data-tier') || '',
+          reads: box.getAttribute('data-reads') || '', callers: box.getAttribute('data-callers') || '',
+          nano: box.getAttribute('data-nano') || '',
+          point_a: box.getAttribute('data-point-a') || '', point_b: box.getAttribute('data-point-b') || '',
+          reportable: box.getAttribute('data-reportable') === '1'
+        };
+      }
+      function sync() {
+        var ids = {};
+        store.load().forEach(function (it) { if (it.kind === 'rearrangement') { ids[it.id] = true; } });
+        document.querySelectorAll('.rx-include').forEach(function (box) {
+          var on = !!ids[box.getAttribute('data-rx-key')];
+          if (box.checked !== on) { box.checked = on; }
+        });
+      }
+      document.addEventListener('change', function (e) {
+        var box = e.target.closest ? e.target.closest('.rx-include') : null;
+        if (!box) { return; }
+        store.toggle('rearrangement', box.getAttribute('data-rx-key'), snapshotOf(box));
+      });
+      var all = document.getElementById('rx-include-reportable');
+      if (all) {
+        all.addEventListener('click', function () {
+          document.querySelectorAll('.rx-include[data-reportable="1"]').forEach(function (box) {
+            if (!box.checked) { store.toggle('rearrangement', box.getAttribute('data-rx-key'), snapshotOf(box)); }
+          });
+        });
+      }
+      store.onChange(sync);
+      sync();
+    });
 
     // Paired breakpoint viewer
     var modalEl = document.getElementById('tx-igv-modal');
