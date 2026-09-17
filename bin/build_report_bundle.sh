@@ -385,7 +385,10 @@ fi
 # BUNDLE_STRICT=1 the assembled tree is audited against what this run must
 # contain and the script fails on any gap. BUNDLE_REQUIRE lists the kinds
 # to audit (default snv,sv): snv = both aliased variant tables, sv = both
-# translocation tables, baf = the cohort screen table.
+# translocation tables, allelic = the four genebaf files
+# (bundle_allelic_kind_v1), cn = the ichorkaryo JSON, cnfig = the genome
+# and grid copy-number figures (bundle_cn_kind_v1), baf = the cohort
+# screen table.
 if [[ "${BUNDLE_STRICT:-0}" == "1" ]]; then
   require=",${BUNDLE_REQUIRE:-snv,sv},"
   gaps=()
@@ -398,6 +401,21 @@ if [[ "${BUNDLE_STRICT:-0}" == "1" ]]; then
     if [[ "$require" == *,sv,* ]]; then
       for f in "${s}.mm_annotated.tsv" "${s}.translocations.tsv"; do
         [[ -f "$BUNDLE/$s/translocations/$f" ]] || gaps+=("$s:translocations/$f")
+      done
+    fi
+    if [[ "$require" == *,allelic,* ]]; then
+      for f in "${s}.genebaf.tsv" "${s}.genebaf.json" \
+               "${s}.genebaf.bins.tsv" "${s}.genebaf.sites.tsv"; do
+        [[ -s "$BUNDLE/$s/allelic/$f" ]] || gaps+=("$s:allelic/$f")
+      done
+    fi
+    if [[ "$require" == *,cn,* ]]; then
+      f="${s}.ichorkaryo.json"
+      [[ -s "$BUNDLE/$s/copy_number/$f" ]] || gaps+=("$s:copy_number/$f")
+    fi
+    if [[ "$require" == *,cnfig,* ]]; then
+      for f in "${s}.cn_genome.png" "${s}.cn_grid.png"; do
+        [[ -s "$BUNDLE/$s/copy_number/$f" ]] || gaps+=("$s:copy_number/$f")
       done
     fi
   done

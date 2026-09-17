@@ -26,7 +26,7 @@
 #   check_published_outputs.sh <results_dir> <ids_file> [required_kinds]
 #
 #   ids_file        one sample ID per line
-#   required_kinds  comma-separated subset of: snv,sv,cnv,qc,cn,baf
+#   required_kinds  comma-separated subset of: snv,sv,cnv,qc,cn,cnfig,allelic,baf
 #                   (default: snv,sv). Anything not listed is reported but
 #                   does not affect the exit status.
 #
@@ -36,6 +36,14 @@
 #   cnv   ichorCNA params.txt for <id>                       (ICHORCNA)
 #   qc    <id>.region_coverage.tsv                           (QC_ONTARGET)
 #   cn    <id>*.ichorkaryo.json                              (ICHORKARYO)
+#   cnfig <id>.cn_genome.png and <id>.cn_grid.png
+#         under hg38/copy_number/                          (ICHORCNA_PLOT)
+#         bundle_cn_kind_v1: cnv only proves ichorCNA's params.txt
+#         exists; the JSON and figures are two processes later.
+#   allelic  <id>.genebaf.{tsv,json,bins.tsv,sites.tsv}
+#         under hg38/allelic/                              (GENEBAF)
+#         bundle_allelic_kind_v1: added after the 14-sample bundle
+#         was built four minutes before genebaf's publishDir copy.
 #   baf   cohort.baf_screen.tsv, once per run                (BAF_LOH_SCREEN)
 
 set -euo pipefail
@@ -73,6 +81,8 @@ TRA_LIST=$(list_files -name '*.translocations.tsv')
 ICHOR_LIST=$(list_files -path '*ichor*' -name '*params.txt')
 QC_LIST=$(list_files -name '*.region_coverage.tsv')
 CN_LIST=$(list_files -name '*.ichorkaryo.json')
+GENEBAF_LIST=$(list_files -path '*hg38/allelic*' -name '*.genebaf*')
+CNFIG_LIST=$(list_files -path '*hg38/copy_number*' -name '*.cn_*.png')
 BAF_LIST=$(list_files -name 'cohort.baf_screen.tsv')
 
 has() {
@@ -85,12 +95,12 @@ is_required() {
   [[ ",${REQUIRED}," == *",$1,"* ]]
 }
 
-KINDS=(snv sv cnv qc cn)
+KINDS=(snv sv cnv qc cn cnfig allelic)
 missing=()
 
 printf '%-16s' "sample"
 for k in "${KINDS[@]}"; do
-  if is_required "$k"; then printf ' %5s' "$k*"; else printf ' %5s' "$k"; fi
+  if is_required "$k"; then printf ' %8s' "$k*"; else printf ' %8s' "$k"; fi
 done
 printf '\n'
 
@@ -103,11 +113,23 @@ for id in "${IDS[@]}"; do
       cnv) has "$ICHOR_LIST" "$id" && ok=1 || ok=0 ;;
       qc)  has "$QC_LIST" "$id" && ok=1 || ok=0 ;;
       cn)  has "$CN_LIST" "$id" && ok=1 || ok=0 ;;
+      cnfig)
+        ok=1
+        for f in cn_genome.png cn_grid.png; do
+          has "$CNFIG_LIST" "${id}.${f}" || ok=0
+        done ;;
+      allelic)
+        # All four genebaf files, matched on the exact basename so
+        # <id>.genebaf.tsv does not satisfy the check for .bins.tsv.
+        ok=1
+        for suf in .tsv .json .bins.tsv .sites.tsv; do
+          has "$GENEBAF_LIST" "${id}.genebaf${suf}" || ok=0
+        done ;;
     esac
     if [[ $ok -eq 1 ]]; then
-      printf ' %5s' "+"
+      printf ' %8s' "+"
     else
-      printf ' %5s' "-"
+      printf ' %8s' "-"
       if is_required "$k"; then missing+=("${id}:${k}"); fi
     fi
   done

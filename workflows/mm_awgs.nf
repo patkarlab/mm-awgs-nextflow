@@ -150,6 +150,16 @@ workflow MM_AWGS {
             if (!params.skip_clair3_phased && !params.skip_vep_annotate
                     && !params.skip_v6_filter) required_kinds << 'snv'
             if (!params.skip_ichorcna) required_kinds << 'cnv'
+            // bundle_allelic_kind_v1: genebaf outputs. GENEBAF reads the
+            // BAM directly and is gated on skip_genebaf alone.
+            if (!params.skip_genebaf) required_kinds << 'allelic'
+            // bundle_cn_kind_v1: the karyotype JSON and copy-number figures
+            // are two processes downstream of the params.txt that 'cnv'
+            // checks; gates mirror subworkflows/local/hg38_track.nf.
+            if (!params.skip_ichorcna && !params.skip_ichorkaryo) {
+                required_kinds << 'cn'
+                if (!params.skip_cn_plot) required_kinds << 'cnfig'
+            }
             if (!params.skip_clair3_phased && !params.skip_baf_loh) required_kinds << 'baf'
         }
 
