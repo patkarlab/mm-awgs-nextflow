@@ -170,6 +170,10 @@ workflow MM_AWGS {
             file("${projectDir}/bin/build_report_bundle.sh"),
             file(params.panel_bed_t2t,  checkIfExists: true),
             file(params.panel_bed_hg38, checkIfExists: true),
+            // allelic_gene_track_v1: hg38 gene model for the window plots.
+            // Optional; an empty list stages nothing and the bundle script
+            // draws no gene track.
+            params.gene_model_hg38 ? file(params.gene_model_hg38, checkIfExists: true) : [],
             params.outdir,
             bundle_name
         )

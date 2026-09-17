@@ -245,7 +245,21 @@
                   {% if w.svg %}
                     <tr class="cn-win-plot" data-cn-win-plot="{{ page.chrom }}-{{ loop.index }}" style="display:none">
                       <td colspan="9" class="bg-white">{{ w.svg | safe }}
-                        <div class="small text-muted">Red points: allele fractions away from 0 and 1 (heterozygous or imbalanced sites); grey: near-homozygous. A diploid balanced window puts the red band at 0.5; a deletion or copy-neutral LOH splits it; a gain shifts it to one side.</div>
+                        {# allelic_gene_track_v1: swatch legend and reading guide #}
+                        <div class="small text-muted mt-1">
+                          <span class="me-3"><span style="display:inline-block;width:14px;height:3px;background:#1F3B73;vertical-align:middle"></span> depth log2, 1 kb bin</span>
+                          {% if w.genes_in_window %}<span class="me-3"><span style="display:inline-block;width:14px;height:9px;background:#2e7d32;vertical-align:middle"></span> gene body</span>{% endif %}
+                          <span class="me-3"><span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:#b91c1c;vertical-align:middle"></span> heterozygous SNP (allele fraction 0.15&ndash;0.85)</span>
+                          <span class="me-3"><span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:#888;vertical-align:middle"></span> homozygous SNP (near 0 or 1; carries no allelic information)</span>
+                        </div>
+                        <div class="small text-muted">
+                          Only the red sites report allelic state. <strong>Balanced diploid:</strong> one red band at 0.5, depth flat.
+                          <strong>Deletion:</strong> band splits symmetrically about 0.5, depth falls.
+                          <strong>Copy-neutral LOH:</strong> band splits, depth flat.
+                          <strong>Gain:</strong> band splits to 1/3 and 2/3, depth rises.
+                          Separation grows with the fraction of cells carrying the event; near 100% the red sites reach the grey lines.
+                          Runs of grey-only sites are haplotype blocks, not LOH.
+                        </div>
                       </td>
                     </tr>
                   {% endif %}

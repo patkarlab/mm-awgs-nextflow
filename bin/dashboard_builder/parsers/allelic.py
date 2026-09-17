@@ -78,14 +78,48 @@ def _reading(cn_event, state, obs_het, exp_het):
     return "no event"
 
 
-def _window_svg(gene, start, end, bins, sites, width=960):
-    """Inline SVG: on-target depth log2 per 1 kb bin (top) and per-site
-    alternate allele fraction (bottom) across one panel window. No
-    dependencies, self-contained in the page. (allelic_plot_v1)"""
+GENE_MODEL_NAME = "gene_model_hg38.bed"
+
+
+def _read_gene_model(d):
+    """Panel gene bodies in hg38 coordinates (allelic_gene_track_v1).
+    Copied into allelic/ by build_report_bundle.sh; absent in bundles built
+    before it, in which case the plots simply carry no gene track."""
+    path = os.path.join(d, GENE_MODEL_NAME)
+    genes = []
+    if not os.path.isfile(path):
+        return genes
+    with open(path) as fh:
+        for line in fh:
+            if not line.strip() or line.startswith(("#", "track", "browser")):
+                continue
+            f = line.rstrip("\n").split("\t")
+            if len(f) < 4:
+                continue
+            s, e = _int(f[1]), _int(f[2])
+            if s is None or e is None:
+                continue
+            genes.append({"chrom": f[0], "start": s, "end": e, "name": f[3]})
+    return genes
+
+
+def _genes_in_window(genes, chrom, start, end):
+    return [g for g in genes
+            if g["chrom"] == chrom and g["end"] > start and g["start"] < end]
+
+
+def _window_svg(gene, start, end, bins, sites, genes=None, width=960):
+    """Inline SVG: on-target depth log2 per 1 kb bin (top), a gene track
+    (middle, allelic_gene_track_v1) and per-site alternate allele fraction
+    (bottom) across one panel window. No dependencies, self-contained in
+    the page. (allelic_plot_v1)"""
     if not bins and not sites:
         return ""
+    genes = genes or []
     span = max(1, end - start)
-    left, right, h_top, h_bot, gap, pad = 52, 12, 110, 110, 26, 16
+    # The gap between panels holds the gene track when there is one.
+    left, right, h_top, h_bot, pad = 52, 12, 110, 110, 16
+    gap = 52 if genes else 26
     w = width - left - right
     height = pad + h_top + gap + h_bot + 26
 
@@ -112,6 +146,18 @@ def _window_svg(gene, start, end, bins, sites, width=960):
         out.append('<text x="%d" y="%.1f" text-anchor="end" fill="#666">%.1f</text>' % (left - 6, y_bot(v) + 3, v))
     out.append('<text x="%d" y="%d" fill="#444" font-weight="600">%s &middot; depth log2 (1 kb bins)</text>' % (left, pad - 2, gene))
     out.append('<text x="%d" y="%.1f" fill="#444" font-weight="600">alternate allele fraction at common SNPs</text>' % (left, pad + h_top + gap - 6))
+    # gene track: one band per panel gene overlapping the window, clipped
+    # to the window, labelled at the centre of the visible part.
+    if genes:
+        y_band = pad + h_top + 8
+        out.append('<text x="%d" y="%.1f" text-anchor="end" fill="#666">genes</text>' % (left - 6, y_band + 8))
+        for g in sorted(genes, key=lambda r: r["start"]):
+            gs, ge = max(g["start"], start), min(g["end"], end)
+            x0, x1 = x(gs), x(ge)
+            out.append('<rect x="%.1f" y="%.1f" width="%.2f" height="9" fill="#2e7d32" opacity="0.85"><title>%s chr:%s-%s</title></rect>'
+                       % (x0, y_band, max(1.5, x1 - x0), g["name"], format(g["start"], ","), format(g["end"], ",")))
+            out.append('<text x="%.1f" y="%.1f" text-anchor="middle" fill="#1b5e20" font-weight="600">%s</text>'
+                       % ((x0 + x1) / 2.0, y_band + 21, g["name"]))
     # bins
     for b in bins:
         v = b.get("log2")
@@ -140,6 +186,7 @@ def parse(effective_dir, sample, ichorkaryo_genes=None):
         return result
     arms = _read_tsv(os.path.join(d, "%s.armloh.tsv" % sample))
     bins = _read_tsv(os.path.join(d, "%s.genebaf.bins.tsv" % sample))
+    gene_model = _read_gene_model(d)
     scope = {}
     jp = os.path.join(d, "%s.genebaf.json" % sample)
     if os.path.isfile(jp):
@@ -193,8 +240,11 @@ def parse(effective_dir, sample, ichorkaryo_genes=None):
             "observed_het": obs, "expected_het": exp,
         }
         row["reading"] = _reading(row["cn_event"], state, obs, exp)
+        row["genes_in_window"] = _genes_in_window(
+            gene_model, row["chrom"], row["start"] or 0, row["end"] or 0)
         row["svg"] = (_window_svg(gene, row["start"] or 0, row["end"] or 0,
-                                  bins_by_gene.get(gene, []), sites_by_gene.get(gene, []))
+                                  bins_by_gene.get(gene, []), sites_by_gene.get(gene, []),
+                                  row["genes_in_window"])
                       if row["baf_scope"] == "assessed" else "")
         by_chrom[row["chrom"]]["windows"].append(row)
 

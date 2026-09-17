@@ -21,6 +21,10 @@ process REPORT_BUNDLE {
     // and the bundle ships without the reads its calls were made from.
     path panel_bed_t2t
     path panel_bed_hg38
+    // allelic_gene_track_v1: hg38 gene model, copied into each sample's
+    // allelic/ so the window plots can draw gene boundaries. May be an
+    // empty list when params.gene_model_hg38 is null.
+    path gene_model_hg38
     val  outdir
     val  bundle_name
 
@@ -41,6 +45,7 @@ process REPORT_BUNDLE {
 
     export PANEL_BED_T2T="\$(readlink -f ${panel_bed_t2t})"
     export PANEL_BED_HG38="\$(readlink -f ${panel_bed_hg38})"
+    export GENE_MODEL_HG38="${gene_model_hg38 ? '\$(readlink -f ' + gene_model_hg38 + ')' : ''}"
     # Sliced BAMs are excluded by default. A panel slice is not a reduction
     # under adaptive sampling, where nearly all depth is on-target: the
     # 21-sample cohort bundle reached 13 GB, and zipping BGZF gains nothing.

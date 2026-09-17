@@ -53,6 +53,12 @@ if [[ -z "$ALIAS_SCRIPT" ]]; then
     exit 1
 fi
 
+# allelic_gene_track_v1: hg38 gene model for the allelic window plots.
+# Inside a Nextflow task it is staged and exported by REPORT_BUNDLE; run
+# by hand it sits beside this script under ../assets. Empty or missing
+# means no gene track, not a failure.
+GENE_MODEL_HG38="${GENE_MODEL_HG38-${SCRIPT_DIR}/../assets/aWGS_PCN_v7_gene_model_hg38.bed}"
+
 RESULTS="${1:?Usage: build_report_bundle.sh <results_dir> [bundle_name]}"
 BUNDLE="${2:-report_$(basename "$RESULTS")}"
 
@@ -233,6 +239,12 @@ for s in "${SAMPLES[@]}"; do
   copy_all   "$d/allelic" "$s" -path '*hg38/allelic*' -name "${s}.genebaf.json"
   copy_all   "$d/allelic" "$s" -path '*hg38/allelic*' -name "${s}.genebaf.bins.tsv"
   copy_all   "$d/allelic" "$s" -path '*hg38/allelic*' -name "${s}.genebaf.sites.tsv"
+  # allelic_gene_track_v1: the gene model rides beside the genebaf files
+  # (3 KB) so parsers/allelic.py reads only its own subdirectory.
+  if [[ -d "$d/allelic" && -n "$GENE_MODEL_HG38" && -f "$GENE_MODEL_HG38" ]]; then
+    cp -L "$GENE_MODEL_HG38" "$d/allelic/gene_model_hg38.bed"
+    echo "  + allelic/gene_model_hg38.bed"
+  fi
   copy_first "$d/qc" "${s}.fingerprint.json" "$s" -name "${s}.fingerprint.json"
 
   # IGV: breakpoint pages, the somatic page, and the manifest that maps
